@@ -113,7 +113,7 @@ export class FilesService implements OnModuleInit {
     try {
       // Sanitizar el nombre del archivo para prevenir path traversal
       const sanitizedFilename = this.sanitizeFilename(filename);
-      
+
       await this.minioClient.putObject(
         this.bucketName,
         sanitizedFilename,
@@ -121,7 +121,7 @@ export class FilesService implements OnModuleInit {
         file.size,
         {
           'Content-Type': file.mimetype,
-          'Original-Name': file.originalname,
+          'Original-Name': encodeURIComponent(file.originalname),
           'X-Amz-Acl': 'private',
         },
       );
@@ -152,12 +152,21 @@ export class FilesService implements OnModuleInit {
     try {
       const sanitizedFilename = this.sanitizeFilename(filename);
       const stat = await this.minioClient.statObject(this.bucketName, sanitizedFilename);
-      
+
+      const originalNameEncoded = stat.metaData['original-name'] || sanitizedFilename;
+      let originalName = originalNameEncoded;
+      try {
+        originalName = decodeURIComponent(originalNameEncoded);
+      } catch (e) {
+        // Si falla la decodificación, usamos el valor tal cual (compatibilidad hacia atrás)
+        originalName = originalNameEncoded;
+      }
+
       return {
         filename: sanitizedFilename,
         size: stat.size,
         contentType: stat.metaData['content-type'] || this.getMimeType(sanitizedFilename),
-        originalName: stat.metaData['original-name'] || sanitizedFilename,
+        originalName: originalName,
         lastModified: stat.lastModified,
         etag: stat.etag,
       };
@@ -176,18 +185,18 @@ export class FilesService implements OnModuleInit {
     try {
       const sanitizedFilename = this.sanitizeFilename(filename);
       const chunks: Buffer[] = [];
-      
+
       const dataStream = await this.minioClient.getObject(this.bucketName, sanitizedFilename);
-      
+
       return new Promise((resolve, reject) => {
         dataStream.on('data', (chunk) => {
           chunks.push(chunk);
         });
-        
+
         dataStream.on('end', () => {
           resolve(Buffer.concat(chunks));
         });
-        
+
         dataStream.on('error', (err: any) => {
           if (err?.code === 'NotFound' || err?.message?.includes('does not exist')) {
             reject(new NotFoundException('Archivo no encontrado'));
