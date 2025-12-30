@@ -86,6 +86,44 @@ export class FilesService implements OnModuleInit {
   }
 
   /**
+   * Valida exclusivamente boletas (solo PDF e imágenes)
+   */
+  validateBoleta(file: Express.Multer.File): void {
+    if (!file) {
+      throw new BadRequestException('No se ha proporcionado ningún archivo');
+    }
+
+    // Validar tamaño
+    if (file.size > this.maxFileSize) {
+      throw new BadRequestException(
+        `El archivo excede el tamaño máximo permitido de ${this.maxFileSize / 1024 / 1024}MB`,
+      );
+    }
+
+    // Validar extensión estricta
+    const allowedBoletaExtensions = ['.jpg', '.jpeg', '.png', '.pdf'];
+    const fileExtension = extname(file.originalname).toLowerCase();
+
+    if (!allowedBoletaExtensions.includes(fileExtension)) {
+      throw new BadRequestException(
+        `Tipo de archivo no permitido para boletas. Solo se permiten imágenes (JPG, PNG) y PDF.`,
+      );
+    }
+
+    // Validar MIME type estricto
+    const allowedBoletaMimeTypes = [
+      'image/jpeg',
+      'image/jpg',
+      'image/png',
+      'application/pdf',
+    ];
+
+    if (!allowedBoletaMimeTypes.includes(file.mimetype)) {
+      throw new BadRequestException('Formato de archivo inválido para boleta');
+    }
+  }
+
+  /**
    * Genera un nombre único para el archivo
    */
   generateFileName(originalName: string): string {

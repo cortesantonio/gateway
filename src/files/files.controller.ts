@@ -17,7 +17,7 @@ import { SupabaseAuthGuard } from '../auth/supabase-auth.guard';
 
 @Controller('files')
 export class FilesController {
-  constructor(private readonly filesService: FilesService) {}
+  constructor(private readonly filesService: FilesService) { }
 
   @Post('upload')
   @UseGuards(SupabaseAuthGuard)
@@ -46,7 +46,7 @@ export class FilesController {
 
     // Generar nombre único para el archivo
     const filename = this.filesService.generateFileName(file.originalname);
-    
+
     // Subir archivo a MinIO
     const uploadedFilename = await this.filesService.uploadFile(file, filename);
 
@@ -61,6 +61,58 @@ export class FilesController {
         uploadedAt: new Date().toISOString(),
       },
     };
+  }
+
+  @Post('boletas')
+  @UseGuards(SupabaseAuthGuard)
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      fileFilter: (req, file, cb) => {
+        // Validación básica en el interceptor para boletas
+        const ext = file.originalname.toLowerCase().match(/\.(jpg|jpeg|png|pdf)$/);
+        if (!ext) {
+          return cb(
+            new Error('Solo se permiten boletas en formato imagen (JPG, PNG) o PDF'),
+            false,
+          );
+        }
+        cb(null, true);
+      },
+      limits: {
+        fileSize: 10 * 1024 * 1024, // 10MB
+      },
+    }),
+  )
+  async uploadBoleta(@UploadedFile() file: Express.Multer.File) {
+    // Validación estricta usando el servicio
+    this.filesService.validateBoleta(file);
+
+    // Generar nombre único para la boleta
+    const filename = this.filesService.generateFileName(file.originalname);
+
+    // Subir archivo a MinIO (reutilizamos la lógica de subida ya que el bucket es el mismo)
+    // Si se requiriera un bucket diferente, habría que modificar el servicio
+    const uploadedFilename = await this.filesService.uploadFile(file, filename);
+
+    return {
+      success: true,
+      message: 'Boleta subida exitosamente',
+      data: {
+        filename: uploadedFilename,
+        originalname: file.originalname,
+        size: file.size,
+        mimetype: file.mimetype,
+        uploadedAt: new Date().toISOString(),
+      },
+    };
+  }
+
+  @Get('boletas/:filename')
+  @UseGuards(SupabaseAuthGuard)
+  async getBoleta(@Param('filename') filename: string, @Res() res: Response) {
+    // Reutilizamos la lógica de getFile pero protegido con el guard y en una ruta específica
+    return this.getFile(filename, res);
   }
 
   @Get(':filename/info')

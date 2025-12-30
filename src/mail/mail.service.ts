@@ -32,25 +32,28 @@ export class MailService {
         }
     }
 
-    async sendMail(to: string, subject: string, html: string, text?: string, bcc?: string) {
+    async sendMail(to: string, subject: string, html: string, text?: string, bcc?: string, attachments?: any[]) {
         try {
             const path = require('path');
             const logoPath = path.join(process.cwd(), 'src', 'img', 'logo-muni.jpg');
-
+            // Adjuntos por defecto (Logo)
+            const defaultAttachments = [
+                {
+                    filename: 'logo-muni.jpg',
+                    path: logoPath,
+                    cid: 'logo-muni'
+                }
+            ];
+            // Combinar adjuntos del usuario con los por defecto
+            const finalAttachments = attachments ? [...defaultAttachments, ...attachments] : defaultAttachments;
             const info = await this.transporter.sendMail({
                 from: process.env.MAIL_FROM || process.env.MAIL_USER,
                 to,
                 bcc,
                 subject,
                 html,
-                text: text || html.replace(/<[^>]*>?/gm, ''), // Fallback simple strip tags if no text provided
-                attachments: [
-                    {
-                        filename: 'logo-muni.jpg',
-                        path: logoPath,
-                        cid: 'logo-muni'
-                    }
-                ]
+                text: text || html.replace(/<[^>]*>?/gm, ''),
+                attachments: finalAttachments // <--- Usamos la lista combinada
             });
             this.logger.log(`Email sent: ${info.messageId}`);
             return info;

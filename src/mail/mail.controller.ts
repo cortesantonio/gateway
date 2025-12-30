@@ -16,6 +16,7 @@ interface MailBody {
         details?: string;
         actionInstruction?: string;
     };
+    attachments?: any[];
 }
 
 @Controller('mail')
@@ -48,7 +49,7 @@ export class MailController {
             throw new BadRequestException('Debes proporcionar "html" o un objeto "template" con el contenido del correo.');
         }
 
-        const info = await this.mailService.sendMail(body.to, body.subject, htmlContent, body.text, body.bcc);
+        const info = await this.mailService.sendMail(body.to, body.subject, htmlContent, body.text, body.bcc, body.attachments);
 
         return {
             success: true,
