@@ -17,7 +17,7 @@ import { SmsModule } from './sms/sms.module';
         }),
         BullModule.forRoot({
             connection: {
-                host: process.env.REDIS_HOST || 'localhost',
+                host: process.env.REDIS_HOST || '192.168.10.120',
                 port: parseInt(process.env.REDIS_PORT || '6379'),
                 password: process.env.REDIS_PASSWORD || undefined,
             },
