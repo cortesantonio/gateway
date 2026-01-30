@@ -25,7 +25,7 @@ export class SmsService {
 
             // 2. Primera pulsación (Enviar)
             await this.executeCommand('adb', ['shell', 'input', 'tap', '980', '2100']);
-            await this.sleep(800); // Pequeña pausa
+            await this.sleep(5000); // Pequeña pausa
 
             this.logger.log(`Proceso de envío finalizado para ${number}`);
         } catch (error) {
