@@ -1,12 +1,34 @@
-import { Controller, Post, Body } from '@nestjs/common';
-import { SmsService } from './sms.service';
+import { Controller, Post, Body, UseGuards } from '@nestjs/common';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
+import { SendSmsJobData, SMS_QUEUE_NAME, SEND_SMS_JOB_NAME } from './sms.types';
 
 @Controller('sms')
 export class SmsController {
-    constructor(private readonly smsService: SmsService) { }
+    constructor(
+        @InjectQueue(SMS_QUEUE_NAME) private smsQueue: Queue<SendSmsJobData>
+    ) { }
 
     @Post('send')
     async sendSms(@Body('number') number: string, @Body('message') message: string) {
-        return this.smsService.sendSms(number, message);
+        // Agregar job a la cola
+        const job = await this.smsQueue.add(SEND_SMS_JOB_NAME, {
+            number,
+            message,
+        }, {
+            attempts: 3, // Reintentar hasta 3 veces en caso de fallo
+            backoff: {
+                type: 'exponential',
+                delay: 2000, // Empezar con 2 segundos, luego 4, luego 8
+            },
+            removeOnComplete: 100, // Mantener últimos 100 jobs completados
+            removeOnFail: 200, // Mantener últimos 200 jobs fallidos
+        });
+
+        return {
+            success: true,
+            message: 'SMS agregado a la cola',
+            jobId: job.id,
+        };
     }
 }

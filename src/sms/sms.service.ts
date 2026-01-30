@@ -21,11 +21,11 @@ export class SmsService {
                 '-d', `sms:${number}`,
                 '--es', 'sms_body', quotedMessage
             ]);
-            await this.sleep(800); // Esperar que abra la app
+            await this.sleep(1000); // Esperar que abra la app
 
             // 2. Primera pulsación (Enviar)
-            await this.executeCommand('adb', ['shell', 'input', 'tap', '900', '2100']);
-            await this.sleep(300); // Pequeña pausa
+            await this.executeCommand('adb', ['shell', 'input', 'tap', '980', '2100']);
+            await this.sleep(800); // Pequeña pausa
 
             this.logger.log(`Proceso de envío finalizado para ${number}`);
         } catch (error) {
