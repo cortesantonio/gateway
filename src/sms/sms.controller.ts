@@ -1,12 +1,14 @@
-import { Controller, Post, Body, UseGuards } from '@nestjs/common';
+import { Controller, Post, Body, UseGuards, Get } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { SendSmsJobData, SMS_QUEUE_NAME, SEND_SMS_JOB_NAME } from './sms.types';
+import { SmsService } from './sms.service';
 
 @Controller('sms')
 export class SmsController {
     constructor(
-        @InjectQueue(SMS_QUEUE_NAME) private smsQueue: Queue<SendSmsJobData>
+        @InjectQueue(SMS_QUEUE_NAME) private smsQueue: Queue<SendSmsJobData>,
+        private smsService: SmsService
     ) { }
 
     @Post('send')
@@ -31,4 +33,10 @@ export class SmsController {
             jobId: job.id,
         };
     }
+    @Get('CheckAnswer')
+    async CheckAnswer() {
+        const rawOutput = await this.smsService.CheckAnswer();
+        return this.smsService.parseSmsOutput(rawOutput);
+    }
+
 }
