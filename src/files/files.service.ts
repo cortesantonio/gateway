@@ -15,8 +15,14 @@ export class FilesService implements OnModuleInit {
     'application/pdf',
     'application/msword',
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    // Excel & CSV
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'text/csv',
+    'application/csv',
+    'text/plain', // Some browsers send CSV as text/plain
   ];
-  private readonly allowedExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.pdf', '.doc', '.docx'];
+  private readonly allowedExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.csv'];
   private readonly blockedDoubleExtensions = ['.exe', '.com', '.bat', '.cmd', '.sh', '.msi', '.js', '.jar', '.vbs', '.ps1', '.php', '.py', '.rb'];
   private readonly maxFileSize = 10 * 1024 * 1024; // 10MB
 
@@ -82,6 +88,82 @@ export class FilesService implements OnModuleInit {
     // Validar MIME type
     if (!this.allowedMimeTypes.includes(file.mimetype)) {
       throw new BadRequestException('Tipo MIME no permitido');
+    }
+  }
+
+  /**
+   * Valida exclusivamente oficios (solo PDF)
+   */
+  validateOficio(file: Express.Multer.File): void {
+    if (!file) {
+      throw new BadRequestException('No se ha proporcionado ningún archivo');
+    }
+
+    if (file.size > this.maxFileSize) {
+      throw new BadRequestException(
+        `El archivo excede el tamaño máximo permitido de ${this.maxFileSize / 1024 / 1024}MB`,
+      );
+    }
+
+    const fileExtension = extname(file.originalname).toLowerCase();
+    if (fileExtension !== '.pdf') {
+      throw new BadRequestException('Solo se permiten archivos PDF para oficios');
+    }
+
+    if (file.mimetype !== 'application/pdf') {
+      throw new BadRequestException('Tipo MIME inválido. Solo se acepta application/pdf');
+    }
+  }
+
+  /**
+   * Valida archivos de carga masiva de citas (Excel o CSV)
+   */
+  validateCitas(file: Express.Multer.File): void {
+    this._validateSpreadsheet(file, 'citas');
+  }
+
+  /**
+   * Valida archivos de carga masiva de funcionarios (Excel o CSV)
+   */
+  validateFuncionarios(file: Express.Multer.File): void {
+    this._validateSpreadsheet(file, 'funcionarios');
+  }
+
+  /**
+   * Lógica común para validar hojas de cálculo (Excel / CSV)
+   */
+  private _validateSpreadsheet(file: Express.Multer.File, context: string): void {
+    if (!file) {
+      throw new BadRequestException('No se ha proporcionado ningún archivo');
+    }
+
+    if (file.size > this.maxFileSize) {
+      throw new BadRequestException(
+        `El archivo excede el tamaño máximo permitido de ${this.maxFileSize / 1024 / 1024}MB`,
+      );
+    }
+
+    const allowedSpreadsheetExtensions = ['.xls', '.xlsx', '.csv'];
+    const fileExtension = extname(file.originalname).toLowerCase();
+
+    if (!allowedSpreadsheetExtensions.includes(fileExtension)) {
+      throw new BadRequestException(
+        `Tipo de archivo no permitido para ${context}. Solo se permiten archivos Excel (.xls, .xlsx) y CSV (.csv).`,
+      );
+    }
+
+    const allowedSpreadsheetMimeTypes = [
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'text/csv',
+      'application/csv',
+      'text/plain', // Some browsers/OS send CSV as text/plain
+    ];
+
+    if (!allowedSpreadsheetMimeTypes.includes(file.mimetype)) {
+      throw new BadRequestException(
+        `Formato de archivo inválido para ${context}. MIME type no permitido: ${file.mimetype}`,
+      );
     }
   }
 
@@ -305,6 +387,9 @@ export class FilesService implements OnModuleInit {
       '.pdf': 'application/pdf',
       '.doc': 'application/msword',
       '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      '.xls': 'application/vnd.ms-excel',
+      '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      '.csv': 'text/csv',
     };
     return mimeTypes[ext] || 'application/octet-stream';
   }

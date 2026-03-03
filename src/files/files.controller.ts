@@ -108,6 +108,117 @@ export class FilesController {
     };
   }
 
+  @Post('oficios')
+  @UseGuards(SupabaseAuthGuard)
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      fileFilter: (req, file, cb) => {
+        const ext = file.originalname.toLowerCase().match(/\.pdf$/);
+        if (!ext) {
+          return cb(
+            new Error('Solo se permiten archivos PDF para oficios'),
+            false,
+          );
+        }
+        cb(null, true);
+      },
+      limits: {
+        fileSize: 10 * 1024 * 1024, // 10MB
+      },
+    }),
+  )
+  async uploadOficio(@UploadedFile() file: Express.Multer.File) {
+    this.filesService.validateOficio(file);
+    const filename = this.filesService.generateFileName(file.originalname);
+    const uploadedFilename = await this.filesService.uploadFile(file, filename);
+    return {
+      success: true,
+      message: 'Oficio subido exitosamente',
+      data: {
+        filename: uploadedFilename,
+        originalname: file.originalname,
+        size: file.size,
+        mimetype: file.mimetype,
+        uploadedAt: new Date().toISOString(),
+      },
+    };
+  }
+
+  @Post('citas')
+  @UseGuards(SupabaseAuthGuard)
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      fileFilter: (req, file, cb) => {
+        const ext = file.originalname.toLowerCase().match(/\.(xls|xlsx|csv)$/);
+        if (!ext) {
+          return cb(
+            new Error('Solo se permiten archivos Excel (.xls, .xlsx) o CSV (.csv) para citas'),
+            false,
+          );
+        }
+        cb(null, true);
+      },
+      limits: {
+        fileSize: 10 * 1024 * 1024, // 10MB
+      },
+    }),
+  )
+  async uploadCitas(@UploadedFile() file: Express.Multer.File) {
+    this.filesService.validateCitas(file);
+    const filename = this.filesService.generateFileName(file.originalname);
+    const uploadedFilename = await this.filesService.uploadFile(file, filename);
+    return {
+      success: true,
+      message: 'Archivo de citas subido exitosamente',
+      data: {
+        filename: uploadedFilename,
+        originalname: file.originalname,
+        size: file.size,
+        mimetype: file.mimetype,
+        uploadedAt: new Date().toISOString(),
+      },
+    };
+  }
+
+  @Post('funcionarios')
+  @UseGuards(SupabaseAuthGuard)
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      fileFilter: (req, file, cb) => {
+        const ext = file.originalname.toLowerCase().match(/\.(xls|xlsx|csv)$/);
+        if (!ext) {
+          return cb(
+            new Error('Solo se permiten archivos Excel (.xls, .xlsx) o CSV (.csv) para funcionarios'),
+            false,
+          );
+        }
+        cb(null, true);
+      },
+      limits: {
+        fileSize: 10 * 1024 * 1024, // 10MB
+      },
+    }),
+  )
+  async uploadFuncionarios(@UploadedFile() file: Express.Multer.File) {
+    this.filesService.validateFuncionarios(file);
+    const filename = this.filesService.generateFileName(file.originalname);
+    const uploadedFilename = await this.filesService.uploadFile(file, filename);
+    return {
+      success: true,
+      message: 'Archivo de funcionarios subido exitosamente',
+      data: {
+        filename: uploadedFilename,
+        originalname: file.originalname,
+        size: file.size,
+        mimetype: file.mimetype,
+        uploadedAt: new Date().toISOString(),
+      },
+    };
+  }
+
   @Get('boletas/:filename')
   @UseGuards(SupabaseAuthGuard)
   async getBoleta(@Param('filename') filename: string, @Res() res: Response) {
