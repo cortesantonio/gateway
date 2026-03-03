@@ -214,10 +214,17 @@ export class FilesService implements OnModuleInit {
   }
 
   /**
-   * Normaliza y sanitiza el nombre del archivo para evitar path traversal
+   * Normaliza y sanitiza el nombre del archivo (o ruta) para evitar path traversal.
+   * Permite separadores '/' para admitir rutas con capetas (ej. 'oficios/uuid.pdf').
    */
   private sanitizeFilename(filename: string): string {
-    const sanitized = filename.replace(/\.\./g, '').replace(/[\/\\]/g, '').trim();
+    // Normalizar: reemplazar \\ por /, luego dividir en segmentos
+    const segments = filename.replace(/\\/g, '/').split('/');
+
+    const sanitized = segments
+      .map((seg) => seg.replace(/\.\./g, '').replace(/[\\]/g, '').trim()) // eliminar .. y backslashes por segmento
+      .filter((seg) => seg.length > 0)
+      .join('/');
 
     if (!sanitized) {
       throw new BadRequestException('Nombre de archivo inválido');
@@ -227,16 +234,20 @@ export class FilesService implements OnModuleInit {
   }
 
   /**
-   * Sube un archivo a MinIO
+   * Sube un archivo a MinIO.
+   * @param folder  Carpeta opcional (prefijo) dentro del bucket, ej. 'oficios', 'citas', 'funcionarios'.
+   *                Si se omite, el archivo se almacena en la raíz del bucket.
+   * @returns       La clave completa con la que se almacena en MinIO (incluye carpeta si se especificó).
    */
-  async uploadFile(file: Express.Multer.File, filename: string): Promise<string> {
+  async uploadFile(file: Express.Multer.File, filename: string, folder?: string): Promise<string> {
     try {
-      // Sanitizar el nombre del archivo para prevenir path traversal
       const sanitizedFilename = this.sanitizeFilename(filename);
+      // Construir la clave MinIO: 'folder/filename' o simplemente 'filename'
+      const key = folder ? `${folder}/${sanitizedFilename}` : sanitizedFilename;
 
       await this.minioClient.putObject(
         this.bucketName,
-        sanitizedFilename,
+        key,
         file.buffer,
         file.size,
         {
@@ -246,7 +257,7 @@ export class FilesService implements OnModuleInit {
         },
       );
 
-      return sanitizedFilename;
+      return key; // Retorna la clave completa (con carpeta si aplica)
     } catch (error) {
       throw new BadRequestException(`Error al subir el archivo: ${error.message}`);
     }

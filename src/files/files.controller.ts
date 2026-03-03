@@ -131,7 +131,7 @@ export class FilesController {
   async uploadOficio(@UploadedFile() file: Express.Multer.File) {
     this.filesService.validateOficio(file);
     const filename = this.filesService.generateFileName(file.originalname);
-    const uploadedFilename = await this.filesService.uploadFile(file, filename);
+    const uploadedFilename = await this.filesService.uploadFile(file, filename, 'oficios');
     return {
       success: true,
       message: 'Oficio subido exitosamente',
@@ -168,7 +168,7 @@ export class FilesController {
   async uploadCitas(@UploadedFile() file: Express.Multer.File) {
     this.filesService.validateCitas(file);
     const filename = this.filesService.generateFileName(file.originalname);
-    const uploadedFilename = await this.filesService.uploadFile(file, filename);
+    const uploadedFilename = await this.filesService.uploadFile(file, filename, 'citas');
     return {
       success: true,
       message: 'Archivo de citas subido exitosamente',
@@ -205,7 +205,7 @@ export class FilesController {
   async uploadFuncionarios(@UploadedFile() file: Express.Multer.File) {
     this.filesService.validateFuncionarios(file);
     const filename = this.filesService.generateFileName(file.originalname);
-    const uploadedFilename = await this.filesService.uploadFile(file, filename);
+    const uploadedFilename = await this.filesService.uploadFile(file, filename, 'funcionarios');
     return {
       success: true,
       message: 'Archivo de funcionarios subido exitosamente',
@@ -234,6 +234,17 @@ export class FilesController {
       success: true,
       data: fileInfo,
     };
+  }
+
+  // Ruta para archivos con subcarpeta: GET /files/oficios/uuid.pdf, /files/citas/uuid.xlsx, etc.
+  @Get(':folder/:filename')
+  @UseGuards(SupabaseAuthGuard)
+  async getFileByFolder(
+    @Param('folder') folder: string,
+    @Param('filename') filename: string,
+    @Res() res: Response,
+  ) {
+    return this.getFile(`${folder}/${filename}`, res);
   }
 
   @Get(':filename')
