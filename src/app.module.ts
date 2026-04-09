@@ -8,6 +8,9 @@ import { BullModule } from '@nestjs/bullmq';
 import { APP_GUARD } from '@nestjs/core';
 import { MailModule } from './mail/mail.module';
 import { SmsModule } from './sms/sms.module';
+import { MercadoPublicoModule } from './mercadopublico/mercadopublico.module';
+import { MercadoPublicoScraperModule } from './mercadopublico-scraper/mercadopublico-scraper.module';
+import { ScheduleModule } from '@nestjs/schedule';
 
 @Module({
     imports: [
@@ -27,6 +30,9 @@ import { SmsModule } from './sms/sms.module';
         FilesModule,
         AuthModule,
         UsersModule,
+        MercadoPublicoModule,
+        MercadoPublicoScraperModule,
+        ScheduleModule.forRoot(),
         ThrottlerModule.forRoot([
             {
                 ttl: 60000, // 1 minuto

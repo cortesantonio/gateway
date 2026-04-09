@@ -182,6 +182,36 @@ export class FilesController {
     };
   }
 
+
+  @Post('credenciales')
+  @UseGuards(SupabaseAuthGuard)
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: {
+        fileSize: 10 * 1024 * 1024, // 10MB
+      },
+    }),
+  )
+  async uploadCredenciales(@UploadedFile() file: Express.Multer.File) {
+    const filename = this.filesService.generateFileName(file.originalname);
+    const uploadedFilename = await this.filesService.uploadFile(file, filename, 'credenciales');
+    return {
+      success: true,
+      message: 'Archivo de credenciales subido exitosamente',
+      data: {
+        filename: uploadedFilename,
+        originalname: file.originalname,
+        size: file.size,
+        mimetype: file.mimetype,
+        uploadedAt: new Date().toISOString(),
+      },
+    };
+  }
+
+
+
+
   @Post('funcionarios')
   @UseGuards(SupabaseAuthGuard)
   @UseInterceptors(
