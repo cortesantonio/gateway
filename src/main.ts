@@ -1,8 +1,3 @@
-import { File } from 'node:buffer';
-if (!global.File) {
-  (global as any).File = File;
-}
-
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { HttpsOptions } from '@nestjs/common/interfaces/external/https-options.interface';
