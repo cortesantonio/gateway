@@ -20,6 +20,7 @@ const sms_module_1 = require("./sms/sms.module");
 const mercadopublico_module_1 = require("./mercadopublico/mercadopublico.module");
 const mercadopublico_scraper_module_1 = require("./mercadopublico-scraper/mercadopublico-scraper.module");
 const schedule_1 = require("@nestjs/schedule");
+const monitoring_module_1 = require("./monitoring/monitoring.module");
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
@@ -44,6 +45,7 @@ exports.AppModule = AppModule = __decorate([
             users_module_1.UsersModule,
             mercadopublico_module_1.MercadoPublicoModule,
             mercadopublico_scraper_module_1.MercadoPublicoScraperModule,
+            monitoring_module_1.MonitoringModule,
             schedule_1.ScheduleModule.forRoot(),
             throttler_1.ThrottlerModule.forRoot([
                 {

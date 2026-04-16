@@ -11,6 +11,7 @@ import { SmsModule } from './sms/sms.module';
 import { MercadoPublicoModule } from './mercadopublico/mercadopublico.module';
 import { MercadoPublicoScraperModule } from './mercadopublico-scraper/mercadopublico-scraper.module';
 import { ScheduleModule } from '@nestjs/schedule';
+import { MonitoringModule } from './monitoring/monitoring.module';
 
 @Module({
     imports: [
@@ -32,6 +33,7 @@ import { ScheduleModule } from '@nestjs/schedule';
         UsersModule,
         MercadoPublicoModule,
         MercadoPublicoScraperModule,
+        MonitoringModule,
         ScheduleModule.forRoot(),
         ThrottlerModule.forRoot([
             {
