@@ -15,6 +15,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.MercadoPublicoScraperController = void 0;
 const common_1 = require("@nestjs/common");
 const mercadopublico_scraper_service_1 = require("./mercadopublico-scraper.service");
+const supabase_auth_guard_1 = require("../auth/supabase-auth.guard");
 let MercadoPublicoScraperController = class MercadoPublicoScraperController {
     scraperService;
     constructor(scraperService) {
@@ -50,6 +51,7 @@ __decorate([
 ], MercadoPublicoScraperController.prototype, "consultarOC", null);
 exports.MercadoPublicoScraperController = MercadoPublicoScraperController = __decorate([
     (0, common_1.Controller)('mercadopublico-web'),
+    (0, common_1.UseGuards)(supabase_auth_guard_1.SupabaseAuthGuard),
     __metadata("design:paramtypes", [mercadopublico_scraper_service_1.MercadoPublicoScraperService])
 ], MercadoPublicoScraperController);
 //# sourceMappingURL=mercadopublico-scraper.controller.js.map

@@ -11,12 +11,13 @@ const common_1 = require("@nestjs/common");
 const axios_1 = require("@nestjs/axios");
 const mercadopublico_scraper_service_1 = require("./mercadopublico-scraper.service");
 const mercadopublico_scraper_controller_1 = require("./mercadopublico-scraper.controller");
+const auth_module_1 = require("../auth/auth.module");
 let MercadoPublicoScraperModule = class MercadoPublicoScraperModule {
 };
 exports.MercadoPublicoScraperModule = MercadoPublicoScraperModule;
 exports.MercadoPublicoScraperModule = MercadoPublicoScraperModule = __decorate([
     (0, common_1.Module)({
-        imports: [axios_1.HttpModule],
+        imports: [auth_module_1.AuthModule, axios_1.HttpModule],
         controllers: [mercadopublico_scraper_controller_1.MercadoPublicoScraperController],
         providers: [mercadopublico_scraper_service_1.MercadoPublicoScraperService],
         exports: [mercadopublico_scraper_service_1.MercadoPublicoScraperService],
