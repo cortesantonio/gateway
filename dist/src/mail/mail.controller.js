@@ -15,6 +15,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.MailController = void 0;
 const common_1 = require("@nestjs/common");
 const mail_service_1 = require("./mail.service");
+const supabase_auth_guard_1 = require("../auth/supabase-auth.guard");
 let MailController = class MailController {
     mailService;
     constructor(mailService) {
@@ -50,6 +51,7 @@ __decorate([
 ], MailController.prototype, "sendMail", null);
 exports.MailController = MailController = __decorate([
     (0, common_1.Controller)('mail'),
+    (0, common_1.UseGuards)(supabase_auth_guard_1.SupabaseAuthGuard),
     __metadata("design:paramtypes", [mail_service_1.MailService])
 ], MailController);
 //# sourceMappingURL=mail.controller.js.map

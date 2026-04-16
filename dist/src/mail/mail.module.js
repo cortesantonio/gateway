@@ -10,11 +10,13 @@ exports.MailModule = void 0;
 const common_1 = require("@nestjs/common");
 const mail_service_1 = require("./mail.service");
 const mail_controller_1 = require("./mail.controller");
+const auth_module_1 = require("../auth/auth.module");
 let MailModule = class MailModule {
 };
 exports.MailModule = MailModule;
 exports.MailModule = MailModule = __decorate([
     (0, common_1.Module)({
+        imports: [auth_module_1.AuthModule],
         controllers: [mail_controller_1.MailController],
         providers: [mail_service_1.MailService],
         exports: [mail_service_1.MailService],

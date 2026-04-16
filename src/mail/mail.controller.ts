@@ -1,5 +1,6 @@
-import { Controller, Post, Body, HttpStatus, HttpCode, BadRequestException } from '@nestjs/common';
+import { Controller, Post, Body, HttpStatus, HttpCode, BadRequestException, UseGuards } from '@nestjs/common';
 import { MailService } from './mail.service';
+import { SupabaseAuthGuard } from '../auth/supabase-auth.guard';
 
 interface MailBody {
     to: string;
@@ -20,6 +21,7 @@ interface MailBody {
 }
 
 @Controller('mail')
+@UseGuards(SupabaseAuthGuard)
 export class MailController {
     constructor(private readonly mailService: MailService) { }
 
