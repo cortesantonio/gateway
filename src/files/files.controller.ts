@@ -8,8 +8,9 @@ import {
   Res,
   HttpStatus,
   UseGuards,
+  UploadedFiles,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import type { Response } from 'express';
 import { FilesService } from './files.service';
@@ -246,6 +247,52 @@ export class FilesController {
         mimetype: file.mimetype,
         uploadedAt: new Date().toISOString(),
       },
+    };
+  }
+
+  @Post('tickets')
+  @UseGuards(SupabaseAuthGuard)
+  @UseInterceptors(
+    FilesInterceptor('file', 5, {
+      storage: memoryStorage(),
+      limits: {
+        fileSize: 25 * 1024 * 1024, // 25MB
+      },
+    }),
+  )
+  async uploadTickets(@UploadedFiles() files: Express.Multer.File[]) {
+    if (!files || files.length === 0) {
+      return {
+        success: false,
+        message: 'No se han subido archivos',
+      };
+    }
+
+    const uploadResults: any[] = [];
+
+    for (const file of files) {
+      // Validación usando el servicio
+      this.filesService.validateTicket(file);
+
+      // Generar nombre único para el archivo
+      const filename = this.filesService.generateFileName(file.originalname);
+
+      // Subir archivo a MinIO en la carpeta 'tickets'
+      const uploadedFilename = await this.filesService.uploadFile(file, filename, 'tickets');
+
+      uploadResults.push({
+        filename: uploadedFilename,
+        originalname: file.originalname,
+        size: file.size,
+        mimetype: file.mimetype,
+        uploadedAt: new Date().toISOString(),
+      });
+    }
+
+    return {
+      success: true,
+      message: `${files.length} archivo(s) subido(s) exitosamente`,
+      data: files.length === 1 ? uploadResults[0] : uploadResults,
     };
   }
 

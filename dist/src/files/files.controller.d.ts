@@ -69,6 +69,15 @@ export declare class FilesController {
             uploadedAt: string;
         };
     }>;
+    uploadTickets(files: Express.Multer.File[]): Promise<{
+        success: boolean;
+        message: string;
+        data?: undefined;
+    } | {
+        success: boolean;
+        message: string;
+        data: any;
+    }>;
     getBoleta(filename: string, res: Response): Promise<void>;
     getFileInfo(filename: string): Promise<{
         success: boolean;

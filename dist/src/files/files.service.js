@@ -63,8 +63,17 @@ let FilesService = class FilesService {
         'text/csv',
         'application/csv',
         'text/plain',
+        'video/mp4',
+        'video/quicktime',
+        'video/x-msvideo',
+        'video/webm',
+        'image/webp',
+        'text/plain',
     ];
-    allowedExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.csv'];
+    allowedExtensions = [
+        '.jpg', '.jpeg', '.png', '.gif', '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.csv',
+        '.mp4', '.mov', '.avi', '.webm', '.webp', '.txt'
+    ];
     blockedDoubleExtensions = ['.exe', '.com', '.bat', '.cmd', '.sh', '.msi', '.js', '.jar', '.vbs', '.ps1', '.php', '.py', '.rb'];
     maxFileSize = 10 * 1024 * 1024;
     constructor() {
@@ -174,6 +183,26 @@ let FilesService = class FilesService {
         ];
         if (!allowedBoletaMimeTypes.includes(file.mimetype)) {
             throw new common_1.BadRequestException('Formato de archivo inválido para boleta');
+        }
+    }
+    validateTicket(file) {
+        if (!file) {
+            throw new common_1.BadRequestException('No se ha proporcionado ningún archivo');
+        }
+        const maxTicketSize = 25 * 1024 * 1024;
+        if (file.size > maxTicketSize) {
+            throw new common_1.BadRequestException(`El archivo excede el tamaño máximo permitido para tickets de 25MB`);
+        }
+        const normalizedOriginalName = file.originalname.toLowerCase();
+        if (this.hasSuspiciousDoubleExtension(normalizedOriginalName)) {
+            throw new common_1.BadRequestException('Nombre de archivo inválido o contiene extensiones peligrosas');
+        }
+        const fileExtension = (0, path_1.extname)(file.originalname).toLowerCase();
+        if (!this.allowedExtensions.includes(fileExtension)) {
+            throw new common_1.BadRequestException(`Tipo de archivo no permitido para tickets. Extensiones permitidas: ${this.allowedExtensions.join(', ')}`);
+        }
+        if (!this.allowedMimeTypes.includes(file.mimetype)) {
+            throw new common_1.BadRequestException(`Tipo MIME no permitido para tickets: ${file.mimetype}`);
         }
     }
     generateFileName(originalName) {
@@ -316,6 +345,12 @@ let FilesService = class FilesService {
             '.xls': 'application/vnd.ms-excel',
             '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             '.csv': 'text/csv',
+            '.mp4': 'video/mp4',
+            '.mov': 'video/quicktime',
+            '.avi': 'video/x-msvideo',
+            '.webm': 'video/webm',
+            '.webp': 'image/webp',
+            '.txt': 'text/plain',
         };
         return mimeTypes[ext] || 'application/octet-stream';
     }

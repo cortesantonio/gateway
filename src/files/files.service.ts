@@ -21,8 +21,18 @@ export class FilesService implements OnModuleInit {
     'text/csv',
     'application/csv',
     'text/plain', // Some browsers send CSV as text/plain
+    // Videos & WebP
+    'video/mp4',
+    'video/quicktime',
+    'video/x-msvideo',
+    'video/webm',
+    'image/webp',
+    'text/plain',
   ];
-  private readonly allowedExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.csv'];
+  private readonly allowedExtensions = [
+    '.jpg', '.jpeg', '.png', '.gif', '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.csv',
+    '.mp4', '.mov', '.avi', '.webm', '.webp', '.txt'
+  ];
   private readonly blockedDoubleExtensions = ['.exe', '.com', '.bat', '.cmd', '.sh', '.msi', '.js', '.jar', '.vbs', '.ps1', '.php', '.py', '.rb'];
   private readonly maxFileSize = 10 * 1024 * 1024; // 10MB
 
@@ -202,6 +212,43 @@ export class FilesService implements OnModuleInit {
 
     if (!allowedBoletaMimeTypes.includes(file.mimetype)) {
       throw new BadRequestException('Formato de archivo inválido para boleta');
+    }
+  }
+
+  /**
+   * Valida archivos de evidencia para tickets (Documentos, Fotos, Videos, etc)
+   * Límite: 25MB
+   */
+  validateTicket(file: Express.Multer.File): void {
+    if (!file) {
+      throw new BadRequestException('No se ha proporcionado ningún archivo');
+    }
+
+    const maxTicketSize = 25 * 1024 * 1024; // 25MB
+
+    // Validar tamaño
+    if (file.size > maxTicketSize) {
+      throw new BadRequestException(
+        `El archivo excede el tamaño máximo permitido para tickets de 25MB`,
+      );
+    }
+
+    // Validar extensión
+    const normalizedOriginalName = file.originalname.toLowerCase();
+    if (this.hasSuspiciousDoubleExtension(normalizedOriginalName)) {
+      throw new BadRequestException('Nombre de archivo inválido o contiene extensiones peligrosas');
+    }
+
+    const fileExtension = extname(file.originalname).toLowerCase();
+    if (!this.allowedExtensions.includes(fileExtension)) {
+      throw new BadRequestException(
+        `Tipo de archivo no permitido para tickets. Extensiones permitidas: ${this.allowedExtensions.join(', ')}`,
+      );
+    }
+
+    // Validar MIME type
+    if (!this.allowedMimeTypes.includes(file.mimetype)) {
+      throw new BadRequestException(`Tipo MIME no permitido para tickets: ${file.mimetype}`);
     }
   }
 
@@ -401,6 +448,12 @@ export class FilesService implements OnModuleInit {
       '.xls': 'application/vnd.ms-excel',
       '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       '.csv': 'text/csv',
+      '.mp4': 'video/mp4',
+      '.mov': 'video/quicktime',
+      '.avi': 'video/x-msvideo',
+      '.webm': 'video/webm',
+      '.webp': 'image/webp',
+      '.txt': 'text/plain',
     };
     return mimeTypes[ext] || 'application/octet-stream';
   }

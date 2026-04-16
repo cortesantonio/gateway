@@ -118,6 +118,32 @@ let FilesController = class FilesController {
             },
         };
     }
+    async uploadTickets(files) {
+        if (!files || files.length === 0) {
+            return {
+                success: false,
+                message: 'No se han subido archivos',
+            };
+        }
+        const uploadResults = [];
+        for (const file of files) {
+            this.filesService.validateTicket(file);
+            const filename = this.filesService.generateFileName(file.originalname);
+            const uploadedFilename = await this.filesService.uploadFile(file, filename, 'tickets');
+            uploadResults.push({
+                filename: uploadedFilename,
+                originalname: file.originalname,
+                size: file.size,
+                mimetype: file.mimetype,
+                uploadedAt: new Date().toISOString(),
+            });
+        }
+        return {
+            success: true,
+            message: `${files.length} archivo(s) subido(s) exitosamente`,
+            data: files.length === 1 ? uploadResults[0] : uploadResults,
+        };
+    }
     async getBoleta(filename, res) {
         return this.getFile(filename, res);
     }
@@ -282,6 +308,20 @@ __decorate([
     __metadata("design:paramtypes", [Object]),
     __metadata("design:returntype", Promise)
 ], FilesController.prototype, "uploadFuncionarios", null);
+__decorate([
+    (0, common_1.Post)('tickets'),
+    (0, common_1.UseGuards)(supabase_auth_guard_1.SupabaseAuthGuard),
+    (0, common_1.UseInterceptors)((0, platform_express_1.FilesInterceptor)('file', 5, {
+        storage: (0, multer_1.memoryStorage)(),
+        limits: {
+            fileSize: 25 * 1024 * 1024,
+        },
+    })),
+    __param(0, (0, common_1.UploadedFiles)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Array]),
+    __metadata("design:returntype", Promise)
+], FilesController.prototype, "uploadTickets", null);
 __decorate([
     (0, common_1.Get)('boletas/:filename'),
     (0, common_1.UseGuards)(supabase_auth_guard_1.SupabaseAuthGuard),

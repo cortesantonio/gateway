@@ -14,6 +14,7 @@ export declare class FilesService implements OnModuleInit {
     validateFuncionarios(file: Express.Multer.File): void;
     private _validateSpreadsheet;
     validateBoleta(file: Express.Multer.File): void;
+    validateTicket(file: Express.Multer.File): void;
     generateFileName(originalName: string): string;
     private sanitizeFilename;
     uploadFile(file: Express.Multer.File, filename: string, folder?: string): Promise<string>;
