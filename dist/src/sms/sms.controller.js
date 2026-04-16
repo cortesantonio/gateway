@@ -18,6 +18,7 @@ const bullmq_1 = require("@nestjs/bullmq");
 const bullmq_2 = require("bullmq");
 const sms_types_1 = require("./sms.types");
 const sms_service_1 = require("./sms.service");
+const supabase_auth_guard_1 = require("../auth/supabase-auth.guard");
 let SmsController = class SmsController {
     smsQueue;
     smsService;
@@ -66,6 +67,7 @@ __decorate([
 ], SmsController.prototype, "CheckAnswer", null);
 exports.SmsController = SmsController = __decorate([
     (0, common_1.Controller)('sms'),
+    (0, common_1.UseGuards)(supabase_auth_guard_1.SupabaseAuthGuard),
     __param(0, (0, bullmq_1.InjectQueue)(sms_types_1.SMS_QUEUE_NAME)),
     __metadata("design:paramtypes", [bullmq_2.Queue,
         sms_service_1.SmsService])

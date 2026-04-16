@@ -3,8 +3,10 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { SendSmsJobData, SMS_QUEUE_NAME, SEND_SMS_JOB_NAME } from './sms.types';
 import { SmsService } from './sms.service';
+import { SupabaseAuthGuard } from '../auth/supabase-auth.guard';
 
 @Controller('sms')
+@UseGuards(SupabaseAuthGuard)
 export class SmsController {
     constructor(
         @InjectQueue(SMS_QUEUE_NAME) private smsQueue: Queue<SendSmsJobData>,
