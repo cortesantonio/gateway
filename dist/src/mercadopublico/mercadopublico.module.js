@@ -14,12 +14,14 @@ const config_1 = require("@nestjs/config");
 const cache_manager_redis_yet_1 = require("cache-manager-redis-yet");
 const mercadopublico_service_1 = require("./mercadopublico.service");
 const mercadopublico_controller_1 = require("./mercadopublico.controller");
+const auth_module_1 = require("../auth/auth.module");
 let MercadoPublicoModule = class MercadoPublicoModule {
 };
 exports.MercadoPublicoModule = MercadoPublicoModule;
 exports.MercadoPublicoModule = MercadoPublicoModule = __decorate([
     (0, common_1.Module)({
         imports: [
+            auth_module_1.AuthModule,
             axios_1.HttpModule,
             cache_manager_1.CacheModule.registerAsync({
                 imports: [config_1.ConfigModule],

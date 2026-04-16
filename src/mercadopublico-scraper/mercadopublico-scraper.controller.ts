@@ -1,7 +1,9 @@
-import { Body, Controller, Get, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
 import { MercadoPublicoScraperService, ScraperResult } from './mercadopublico-scraper.service';
+import { SupabaseAuthGuard } from '../auth/supabase-auth.guard';
 
 @Controller('mercadopublico-web')
+@UseGuards(SupabaseAuthGuard)
 export class MercadoPublicoScraperController {
   constructor(private readonly scraperService: MercadoPublicoScraperService) {}
 

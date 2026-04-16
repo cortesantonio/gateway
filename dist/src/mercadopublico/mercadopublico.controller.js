@@ -15,6 +15,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.MercadoPublicoController = void 0;
 const common_1 = require("@nestjs/common");
 const mercadopublico_service_1 = require("./mercadopublico.service");
+const supabase_auth_guard_1 = require("../auth/supabase-auth.guard");
 let MercadoPublicoController = class MercadoPublicoController {
     mpService;
     constructor(mpService) {
@@ -64,6 +65,7 @@ __decorate([
 ], MercadoPublicoController.prototype, "findOne", null);
 exports.MercadoPublicoController = MercadoPublicoController = __decorate([
     (0, common_1.Controller)('mercadopublico'),
+    (0, common_1.UseGuards)(supabase_auth_guard_1.SupabaseAuthGuard),
     __metadata("design:paramtypes", [mercadopublico_service_1.MercadoPublicoService])
 ], MercadoPublicoController);
 //# sourceMappingURL=mercadopublico.controller.js.map

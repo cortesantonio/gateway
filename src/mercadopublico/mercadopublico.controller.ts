@@ -1,7 +1,9 @@
-import { Controller, Get, Param, Query } from '@nestjs/common';
+import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
 import { MercadoPublicoService } from './mercadopublico.service';
+import { SupabaseAuthGuard } from '../auth/supabase-auth.guard';
 
 @Controller('mercadopublico')
+@UseGuards(SupabaseAuthGuard)
 export class MercadoPublicoController {
   constructor(private readonly mpService: MercadoPublicoService) {}
 

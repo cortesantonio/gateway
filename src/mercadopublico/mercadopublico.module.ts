@@ -5,9 +5,11 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { redisStore } from 'cache-manager-redis-yet';
 import { MercadoPublicoService } from './mercadopublico.service';
 import { MercadoPublicoController } from './mercadopublico.controller';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
   imports: [
+    AuthModule,
     HttpModule,
     CacheModule.registerAsync({
       imports: [ConfigModule],
