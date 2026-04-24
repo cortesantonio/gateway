@@ -118,6 +118,20 @@ let FilesController = class FilesController {
             },
         };
     }
+    async processAppointments(file, res) {
+        if (!file) {
+            throw new common_1.BadRequestException('No se ha proporcionado el archivo en el campo "file"');
+        }
+        const processedBuffer = await this.filesService.processAppointmentExcel(file.buffer);
+        const originalName = file.originalname.substring(0, file.originalname.lastIndexOf('.')) || file.originalname;
+        const downloadName = `${originalName}.xlsx`;
+        res.set({
+            'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition': `attachment; filename="${downloadName}"`,
+            'Content-Length': processedBuffer.length.toString(),
+        });
+        res.send(processedBuffer);
+    }
     async uploadTickets(files) {
         if (!files || files.length === 0) {
             return {
@@ -308,6 +322,24 @@ __decorate([
     __metadata("design:paramtypes", [Object]),
     __metadata("design:returntype", Promise)
 ], FilesController.prototype, "uploadFuncionarios", null);
+__decorate([
+    (0, common_1.Post)('process-appointments'),
+    (0, common_1.UseInterceptors)((0, platform_express_1.FileInterceptor)('file', {
+        storage: (0, multer_1.memoryStorage)(),
+        fileFilter: (req, file, cb) => {
+            const ext = file.originalname.toLowerCase().match(/\.(xls|xlsx)$/);
+            if (!ext) {
+                return cb(new Error('Solo se permiten archivos Excel (.xls, .xlsx)'), false);
+            }
+            cb(null, true);
+        },
+    })),
+    __param(0, (0, common_1.UploadedFile)()),
+    __param(1, (0, common_1.Res)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, Object]),
+    __metadata("design:returntype", Promise)
+], FilesController.prototype, "processAppointments", null);
 __decorate([
     (0, common_1.Post)('tickets'),
     (0, common_1.UseGuards)(supabase_auth_guard_1.SupabaseAuthGuard),

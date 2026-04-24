@@ -47,6 +47,8 @@ const common_1 = require("@nestjs/common");
 const path_1 = require("path");
 const Minio = __importStar(require("minio"));
 const crypto_1 = require("crypto");
+const cheerio = __importStar(require("cheerio"));
+const ExcelJS = __importStar(require("exceljs"));
 let FilesService = class FilesService {
     minioClient;
     bucketName = 'files';
@@ -353,6 +355,92 @@ let FilesService = class FilesService {
             '.txt': 'text/plain',
         };
         return mimeTypes[ext] || 'application/octet-stream';
+    }
+    async processAppointmentExcel(buffer) {
+        const $ = cheerio.load(buffer.toString('latin1'));
+        const appointments = [];
+        const tables = $('table');
+        let currentEstablishment = '';
+        let currentProfessional = '';
+        let currentUnit = '';
+        tables.each((i, table) => {
+            const rows = $(table).find('tr');
+            const firstRowText = rows.first().text().toLowerCase();
+            if (firstRowText.includes('centro de salud')) {
+                currentEstablishment = rows.eq(0).find('td').first().text().trim();
+                currentUnit = rows.eq(2).find('td').eq(1).text().trim();
+                currentProfessional = rows.eq(3).find('td').eq(1).text().trim();
+                currentProfessional = currentProfessional.replace(/^\d+\s+/, '').trim();
+            }
+            else if (rows.length > 3 && rows.eq(1).text().includes('Hora')) {
+                rows.each((j, row) => {
+                    const cells = $(row).find('td');
+                    if (cells.length >= 12) {
+                        const horaAten = cells.eq(0).text().trim();
+                        if (/\d{2}\/\d{2}\/\d{4}/.test(horaAten)) {
+                            const [fecha, hora] = horaAten.split(' ');
+                            const ficha = cells.eq(1).text().trim();
+                            const nombre = cells.eq(2).text().trim();
+                            const prestacion = cells.eq(11).text().trim() || cells.eq(9).text().trim();
+                            const celular = cells.eq(13).text().trim();
+                            const redFija = cells.eq(14).text().trim();
+                            const telefono = celular || redFija;
+                            appointments.push({
+                                fecha,
+                                hora,
+                                prestacion,
+                                profesional: currentProfessional,
+                                tipo: currentUnit,
+                                nombre,
+                                telefono,
+                                establecimiento: currentEstablishment,
+                                ficha
+                            });
+                        }
+                    }
+                });
+            }
+        });
+        if (appointments.length === 0) {
+            throw new common_1.BadRequestException('No se encontraron citas en el archivo proporcionado');
+        }
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet('Citas');
+        const headers = [
+            'Fecha',
+            'Hora',
+            'Prestacion',
+            'Profesional',
+            'Tipo',
+            'Nombre',
+            'Telefono',
+            'Email',
+            'Indicaciones',
+            'Establecimiento',
+            'Nota'
+        ];
+        worksheet.addRow(headers);
+        worksheet.getRow(1).font = { bold: true };
+        appointments.forEach((app) => {
+            const row = worksheet.addRow([]);
+            row.getCell(1).value = app.fecha;
+            row.getCell(2).value = app.hora;
+            row.getCell(3).value = '';
+            row.getCell(4).value = app.profesional;
+            row.getCell(5).value = '';
+            row.getCell(6).value = app.nombre;
+            row.getCell(7).value = app.telefono;
+            row.getCell(8).value = '';
+            row.getCell(9).value = '';
+            row.getCell(10).value = '';
+            row.getCell(11).value = app.ficha ? `Ficha: ${app.ficha}` : '';
+            row.commit();
+        });
+        worksheet.columns.forEach(column => {
+            column.width = 20;
+        });
+        const outputBuffer = Buffer.from(await workbook.xlsx.writeBuffer());
+        return outputBuffer;
     }
     hasSuspiciousDoubleExtension(filename) {
         const sanitizedName = filename.toLowerCase().replace(/\s+/g, '');

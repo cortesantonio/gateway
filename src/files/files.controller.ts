@@ -9,6 +9,7 @@ import {
   HttpStatus,
   UseGuards,
   UploadedFiles,
+  BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
@@ -248,6 +249,45 @@ export class FilesController {
         uploadedAt: new Date().toISOString(),
       },
     };
+  }
+
+  @Post('process-appointments')
+  @UseGuards(SupabaseAuthGuard)
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      fileFilter: (req, file, cb) => {
+        const ext = file.originalname.toLowerCase().match(/\.(xls|xlsx)$/);
+        if (!ext) {
+          return cb(
+            new Error('Solo se permiten archivos Excel (.xls, .xlsx)'),
+            false,
+          );
+        }
+        cb(null, true);
+      },
+    }),
+  )
+  async processAppointments(
+    @UploadedFile() file: Express.Multer.File,
+    @Res() res: Response,
+  ) {
+    if (!file) {
+      throw new BadRequestException('No se ha proporcionado el archivo en el campo "file"');
+    }
+    const processedBuffer = await this.filesService.processAppointmentExcel(file.buffer);
+
+    // Obtener el nombre original sin extensión y añadir .xlsx
+    const originalName = file.originalname.substring(0, file.originalname.lastIndexOf('.')) || file.originalname;
+    const downloadName = `${originalName}.xlsx`;
+
+    res.set({
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="${downloadName}"`,
+      'Content-Length': processedBuffer.length.toString(),
+    });
+
+    res.send(processedBuffer);
   }
 
   @Post('tickets')

@@ -69,6 +69,7 @@ export declare class FilesController {
             uploadedAt: string;
         };
     }>;
+    processAppointments(file: Express.Multer.File, res: Response): Promise<void>;
     uploadTickets(files: Express.Multer.File[]): Promise<{
         success: boolean;
         message: string;

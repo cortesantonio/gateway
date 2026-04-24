@@ -31,5 +31,6 @@ export declare class FilesService implements OnModuleInit {
     getFileStream(filename: string): Promise<NodeJS.ReadableStream>;
     generatePresignedUrl(filename: string, expirySeconds?: number): Promise<string>;
     getMimeType(filename: string): string;
+    processAppointmentExcel(buffer: Buffer): Promise<Buffer>;
     private hasSuspiciousDoubleExtension;
 }

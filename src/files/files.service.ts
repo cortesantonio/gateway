@@ -2,6 +2,10 @@ import { Injectable, BadRequestException, NotFoundException, OnModuleInit, HttpS
 import { extname } from 'path';
 import * as Minio from 'minio';
 import { randomUUID } from 'crypto';
+import * as cheerio from 'cheerio';
+import * as ExcelJS from 'exceljs';
+import * as fs from 'fs';
+import * as path from 'path';
 
 @Injectable()
 export class FilesService implements OnModuleInit {
@@ -456,6 +460,127 @@ export class FilesService implements OnModuleInit {
       '.txt': 'text/plain',
     };
     return mimeTypes[ext] || 'application/octet-stream';
+  }
+
+  /**
+   * Procesa un archivo XLS (HTML) de citas y completa la plantilla XLSX
+   */
+  async processAppointmentExcel(buffer: Buffer): Promise<Buffer> {
+    // Usar latin1 para manejar correctamente acentos y Ñ de reportes legacy
+    const $ = cheerio.load(buffer.toString('latin1'));
+
+    interface AppointmentData {
+      fecha: string;
+      hora: string;
+      prestacion: string;
+      profesional: string;
+      tipo: string;
+      nombre: string;
+      telefono: string;
+      establecimiento: string;
+      ficha: string;
+    }
+
+    const appointments: AppointmentData[] = [];
+
+    // Buscar todas las tablas que contienen datos de citas
+    const tables = $('table');
+
+    let currentEstablishment = '';
+    let currentProfessional = '';
+    let currentUnit = '';
+
+    tables.each((i, table) => {
+      const rows = $(table).find('tr');
+      const firstRowText = rows.first().text().toLowerCase();
+
+      if (firstRowText.includes('centro de salud')) {
+        currentEstablishment = rows.eq(0).find('td').first().text().trim();
+        currentUnit = rows.eq(2).find('td').eq(1).text().trim();
+        currentProfessional = rows.eq(3).find('td').eq(1).text().trim();
+        currentProfessional = currentProfessional.replace(/^\d+\s+/, '').trim();
+      } else if (rows.length > 3 && rows.eq(1).text().includes('Hora')) {
+        rows.each((j, row) => {
+          const cells = $(row).find('td');
+          if (cells.length >= 12) {
+            const horaAten = cells.eq(0).text().trim();
+            if (/\d{2}\/\d{2}\/\d{4}/.test(horaAten)) {
+              const [fecha, hora] = horaAten.split(' ');
+              const ficha = cells.eq(1).text().trim();
+              const nombre = cells.eq(2).text().trim();
+              const prestacion = cells.eq(11).text().trim() || cells.eq(9).text().trim();
+
+              const celular = cells.eq(13).text().trim();
+              const redFija = cells.eq(14).text().trim();
+              const telefono = celular || redFija;
+
+              appointments.push({
+                fecha,
+                hora,
+                prestacion,
+                profesional: currentProfessional,
+                tipo: currentUnit,
+                nombre,
+                telefono,
+                establecimiento: currentEstablishment,
+                ficha
+              });
+            }
+          }
+        });
+      }
+    });
+
+    if (appointments.length === 0) {
+      throw new BadRequestException('No se encontraron citas en el archivo proporcionado');
+    }
+
+    // Crear un nuevo libro de Excel (limpio)
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Citas');
+
+    // Definir encabezados idénticos a la plantilla original para facilitar copy-paste
+    const headers = [
+      'Fecha',
+      'Hora',
+      'Prestacion',
+      'Profesional',
+      'Tipo',
+      'Nombre',
+      'Telefono',
+      'Email',
+      'Indicaciones',
+      'Establecimiento',
+      'Nota'
+    ];
+    worksheet.addRow(headers);
+    worksheet.getRow(1).font = { bold: true };
+
+    // Añadir los datos en sus columnas correspondientes
+    appointments.forEach((app) => {
+      const row = worksheet.addRow([]);
+      row.getCell(1).value = app.fecha;
+      row.getCell(2).value = app.hora;
+      row.getCell(3).value = '';
+      row.getCell(4).value = app.profesional;
+      row.getCell(5).value = ''; // Tipo (eliminado por petición, pero mantenemos la columna)
+      row.getCell(6).value = app.nombre;
+      row.getCell(7).value = app.telefono;
+      row.getCell(8).value = ''; // Email
+      row.getCell(9).value = ''; // Indicaciones
+      row.getCell(10).value = ''; // Establecimiento (eliminado por petición, columna vacía)
+      row.getCell(11).value = app.ficha ? `Ficha: ${app.ficha}` : '';
+      row.commit();
+    });
+
+    // Ajustar ancho de columnas automáticamente
+    worksheet.columns.forEach(column => {
+      column.width = 20;
+    });
+
+    // Devolver el buffer del archivo generado
+    const outputBuffer = Buffer.from(await workbook.xlsx.writeBuffer());
+    return outputBuffer;
   }
 
   private hasSuspiciousDoubleExtension(filename: string): boolean {
