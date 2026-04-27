@@ -632,7 +632,15 @@ export class FilesService implements OnModuleInit {
 
     let query = this.supabaseService.getAdminClient()
       .from('informe_box_medico_procesados')
-      .select('*, user:usuario_id(name)');
+      .select(`
+        id,
+        created_at,
+        nombre_original,
+        filas_procesadas,
+        url_path,
+        tipo_reporte,
+        user:usuario_id(name)
+      `);
 
     if (groupId) {
       // Si se especifica un grupo, filtramos por él
@@ -660,7 +668,15 @@ export class FilesService implements OnModuleInit {
       throw new Error(`Error al obtener historial de reportes: ${error.message}`);
     }
 
-    return data;
+    return (data || []).map(report => ({
+      id: report.id,
+      fecha: report.created_at,
+      nombre: report.nombre_original,
+      filas: report.filas_procesadas,
+      tipo: report.tipo_reporte,
+      usuario: (report as any).user?.name || 'Sistema',
+      descarga: `/files/${report.url_path}`
+    }));
   }
 
   private hasSuspiciousDoubleExtension(filename: string): boolean {
