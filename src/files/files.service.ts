@@ -619,22 +619,9 @@ export class FilesService implements OnModuleInit {
   }
 
   /**
-   * Obtiene el historial de reportes procesados según RLS
+   * Obtiene el historial de reportes procesados según RLS y grupo seleccionado
    */
-  async getProcessedReportsHistory(userId: string) {
-    // Nota: Aunque RLS debería manejar la visibilidad, usamos una query que filtre 
-    // inicialmente por lo que el usuario puede ver (dueño o grupo o admin)
-    // Pero como usamos service_role (AdminClient), debemos emular la lógica o usar el cliente del usuario.
-    // Usaremos el AdminClient para asegurar que podemos ver lo necesario si somos admin.
-    
-    // Primero obtenemos los grupos del usuario
-    const { data: userGroups } = await this.supabaseService.getAdminClient()
-      .from('groups_members')
-      .select('group_id')
-      .eq('usuario_id', userId);
-    
-    const groupIds = userGroups?.map(g => g.group_id) || [];
-
+  async getProcessedReportsHistory(userId: string, groupId?: string) {
     // Verificamos si es admin
     const { data: roles } = await this.supabaseService.getAdminClient()
       .from('user_role')
@@ -647,7 +634,19 @@ export class FilesService implements OnModuleInit {
       .from('informe_box_medico_procesados')
       .select('*, user:usuario_id(name)');
 
-    if (!isAdmin) {
+    if (groupId) {
+      // Si se especifica un grupo, filtramos por él
+      query = query.eq('group_id', groupId);
+    } else if (!isAdmin) {
+      // Si no hay grupo y no es admin, mostramos sus propios reportes 
+      // o los de sus grupos
+      const { data: userGroups } = await this.supabaseService.getAdminClient()
+        .from('groups_members')
+        .select('group_id')
+        .eq('usuario_id', userId);
+      
+      const groupIds = userGroups?.map(g => g.group_id) || [];
+
       if (groupIds.length > 0) {
         query = query.or(`usuario_id.eq.${userId},group_id.in.(${groupIds.join(',')})`);
       } else {

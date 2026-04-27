@@ -326,12 +326,12 @@ export class FilesController {
 
   @Get('processed-reports/history')
   @UseGuards(SupabaseAuthGuard)
-  async getProcessedReportsHistory(@Req() req: any) {
+  async getProcessedReportsHistory(@Req() req: any, @Query('groupId') groupId?: string) {
     const user = req.user;
     if (!user) {
       throw new BadRequestException('Usuario no autenticado');
     }
-    const history = await this.filesService.getProcessedReportsHistory(user.id);
+    const history = await this.filesService.getProcessedReportsHistory(user.id, groupId);
     return {
       success: true,
       data: history,
