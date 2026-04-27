@@ -6,6 +6,7 @@ import * as cheerio from 'cheerio';
 import * as ExcelJS from 'exceljs';
 import * as fs from 'fs';
 import * as path from 'path';
+import { SupabaseService } from '../auth/supabase.service';
 
 @Injectable()
 export class FilesService implements OnModuleInit {
@@ -40,7 +41,7 @@ export class FilesService implements OnModuleInit {
   private readonly blockedDoubleExtensions = ['.exe', '.com', '.bat', '.cmd', '.sh', '.msi', '.js', '.jar', '.vbs', '.ps1', '.php', '.py', '.rb'];
   private readonly maxFileSize = 10 * 1024 * 1024; // 10MB
 
-  constructor() {
+  constructor(private readonly supabaseService: SupabaseService) {
     const endPoint = process.env.MINIO_ENDPOINT;
     const port = parseInt(process.env.MINIO_PORT || '9000', 10);
     const useSSL = process.env.MINIO_USE_SSL === 'true';
@@ -465,7 +466,7 @@ export class FilesService implements OnModuleInit {
   /**
    * Procesa un archivo XLS (HTML) de citas y completa la plantilla XLSX
    */
-  async processAppointmentExcel(buffer: Buffer): Promise<Buffer> {
+  async processAppointmentExcel(buffer: Buffer): Promise<{ buffer: Buffer; rowCount: number }> {
     // Usar latin1 para manejar correctamente acentos y Ñ de reportes legacy
     const $ = cheerio.load(buffer.toString('latin1'));
 
@@ -578,9 +579,89 @@ export class FilesService implements OnModuleInit {
       column.width = 20;
     });
 
-    // Devolver el buffer del archivo generado
+    // Devolver el buffer del archivo generado y la cantidad de filas
     const outputBuffer = Buffer.from(await workbook.xlsx.writeBuffer());
-    return outputBuffer;
+    return {
+      buffer: outputBuffer,
+      rowCount: appointments.length
+    };
+  }
+
+  /**
+   * Guarda los metadatos de un reporte procesado en Supabase
+   */
+  async saveReportMetadata(data: {
+    nombre_original: string;
+    nombre_sistema: string;
+    tamaño: number;
+    url_path: string;
+    filas_procesadas: number;
+    usuario_id: string;
+    group_id?: string;
+    tipo_reporte?: string;
+  }) {
+    const { error } = await this.supabaseService.getAdminClient()
+      .from('informe_box_medico_procesados')
+      .insert({
+        nombre_original: data.nombre_original,
+        nombre_sistema: data.nombre_sistema,
+        tamaño: data.tamaño,
+        url_path: data.url_path,
+        filas_procesadas: data.filas_procesadas,
+        usuario_id: data.usuario_id,
+        group_id: data.group_id,
+        tipo_reporte: data.tipo_reporte || 'citas_legacy'
+      });
+
+    if (error) {
+      throw new Error(`Error al guardar metadatos del reporte: ${error.message}`);
+    }
+  }
+
+  /**
+   * Obtiene el historial de reportes procesados según RLS
+   */
+  async getProcessedReportsHistory(userId: string) {
+    // Nota: Aunque RLS debería manejar la visibilidad, usamos una query que filtre 
+    // inicialmente por lo que el usuario puede ver (dueño o grupo o admin)
+    // Pero como usamos service_role (AdminClient), debemos emular la lógica o usar el cliente del usuario.
+    // Usaremos el AdminClient para asegurar que podemos ver lo necesario si somos admin.
+    
+    // Primero obtenemos los grupos del usuario
+    const { data: userGroups } = await this.supabaseService.getAdminClient()
+      .from('groups_members')
+      .select('group_id')
+      .eq('usuario_id', userId);
+    
+    const groupIds = userGroups?.map(g => g.group_id) || [];
+
+    // Verificamos si es admin
+    const { data: roles } = await this.supabaseService.getAdminClient()
+      .from('user_role')
+      .select('role:role_id(nombre)')
+      .eq('user_id', userId);
+    
+    const isAdmin = roles?.some((r: any) => r.role?.nombre === 'Administrador del Sistema');
+
+    let query = this.supabaseService.getAdminClient()
+      .from('informe_box_medico_procesados')
+      .select('*, user:usuario_id(name)');
+
+    if (!isAdmin) {
+      if (groupIds.length > 0) {
+        query = query.or(`usuario_id.eq.${userId},group_id.in.(${groupIds.join(',')})`);
+      } else {
+        query = query.eq('usuario_id', userId);
+      }
+    }
+
+    const { data, error } = await query.order('created_at', { ascending: false });
+
+    if (error) {
+      throw new Error(`Error al obtener historial de reportes: ${error.message}`);
+    }
+
+    return data;
   }
 
   private hasSuspiciousDoubleExtension(filename: string): boolean {

@@ -10,6 +10,8 @@ import {
   UseGuards,
   UploadedFiles,
   BadRequestException,
+  Req,
+  Query,
 } from '@nestjs/common';
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
@@ -271,15 +273,47 @@ export class FilesController {
   async processAppointments(
     @UploadedFile() file: Express.Multer.File,
     @Res() res: Response,
+    @Req() req: any,
+    @Query('groupId') groupId?: string,
   ) {
     if (!file) {
       throw new BadRequestException('No se ha proporcionado el archivo en el campo "file"');
     }
-    const processedBuffer = await this.filesService.processAppointmentExcel(file.buffer);
+
+    const user = req.user;
+    if (!user) {
+      throw new BadRequestException('Usuario no autenticado');
+    }
+
+    const { buffer: processedBuffer, rowCount } = await this.filesService.processAppointmentExcel(file.buffer);
 
     // Obtener el nombre original sin extensión y añadir .xlsx
-    const originalName = file.originalname.substring(0, file.originalname.lastIndexOf('.')) || file.originalname;
-    const downloadName = `${originalName}.xlsx`;
+    const originalBaseName = file.originalname.substring(0, file.originalname.lastIndexOf('.')) || file.originalname;
+    const downloadName = `${originalBaseName}.xlsx`;
+
+    // 1. Guardar el archivo procesado en MinIO (carpeta 'procesados')
+    const systemFilename = this.filesService.generateFileName(downloadName);
+    const storagePath = await this.filesService.uploadFile(
+      {
+        buffer: processedBuffer,
+        size: processedBuffer.length,
+        mimetype: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        originalname: downloadName,
+      } as Express.Multer.File,
+      systemFilename,
+      'procesados'
+    );
+
+    // 2. Guardar metadatos en la base de datos
+    await this.filesService.saveReportMetadata({
+      nombre_original: file.originalname,
+      nombre_sistema: systemFilename,
+      tamaño: processedBuffer.length,
+      url_path: storagePath,
+      filas_procesadas: rowCount,
+      usuario_id: user.id,
+      group_id: groupId,
+    });
 
     res.set({
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -288,6 +322,20 @@ export class FilesController {
     });
 
     res.send(processedBuffer);
+  }
+
+  @Get('processed-reports/history')
+  @UseGuards(SupabaseAuthGuard)
+  async getProcessedReportsHistory(@Req() req: any) {
+    const user = req.user;
+    if (!user) {
+      throw new BadRequestException('Usuario no autenticado');
+    }
+    const history = await this.filesService.getProcessedReportsHistory(user.id);
+    return {
+      success: true,
+      data: history,
+    };
   }
 
   @Post('tickets')
