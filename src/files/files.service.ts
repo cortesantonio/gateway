@@ -618,66 +618,6 @@ export class FilesService implements OnModuleInit {
     }
   }
 
-  /**
-   * Obtiene el historial de reportes procesados según RLS y grupo seleccionado
-   */
-  async getProcessedReportsHistory(userId: string, groupId?: string) {
-    // Verificamos si es admin
-    const { data: roles } = await this.supabaseService.getAdminClient()
-      .from('user_role')
-      .select('role:role_id(nombre)')
-      .eq('user_id', userId);
-    
-    const isAdmin = roles?.some((r: any) => r.role?.nombre === 'Administrador del Sistema');
-
-    let query = this.supabaseService.getAdminClient()
-      .from('informe_box_medico_procesados')
-      .select(`
-        id,
-        created_at,
-        nombre_original,
-        filas_procesadas,
-        url_path,
-        tipo_reporte,
-        user:usuario_id(name)
-      `);
-
-    if (groupId) {
-      // Si se especifica un grupo, filtramos por él
-      query = query.eq('group_id', groupId);
-    } else if (!isAdmin) {
-      // Si no hay grupo y no es admin, mostramos sus propios reportes 
-      // o los de sus grupos
-      const { data: userGroups } = await this.supabaseService.getAdminClient()
-        .from('groups_members')
-        .select('group_id')
-        .eq('usuario_id', userId);
-      
-      const groupIds = userGroups?.map(g => g.group_id) || [];
-
-      if (groupIds.length > 0) {
-        query = query.or(`usuario_id.eq.${userId},group_id.in.(${groupIds.join(',')})`);
-      } else {
-        query = query.eq('usuario_id', userId);
-      }
-    }
-
-    const { data, error } = await query.order('created_at', { ascending: false });
-
-    if (error) {
-      throw new Error(`Error al obtener historial de reportes: ${error.message}`);
-    }
-
-    return (data || []).map(report => ({
-      id: report.id,
-      fecha: report.created_at,
-      nombre: report.nombre_original,
-      filas: report.filas_procesadas,
-      tipo: report.tipo_reporte,
-      usuario: (report as any).user?.name || 'Sistema',
-      descarga: `/files/${report.url_path}`
-    }));
-  }
 
   private hasSuspiciousDoubleExtension(filename: string): boolean {
     const sanitizedName = filename.toLowerCase().replace(/\s+/g, '');

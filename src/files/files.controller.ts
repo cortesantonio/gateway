@@ -287,33 +287,28 @@ export class FilesController {
 
     const { buffer: processedBuffer, rowCount } = await this.filesService.processAppointmentExcel(file.buffer);
 
-    // Obtener el nombre original sin extensión y añadir .xlsx
-    const originalBaseName = file.originalname.substring(0, file.originalname.lastIndexOf('.')) || file.originalname;
-    const downloadName = `${originalBaseName}.xlsx`;
-
-    // 1. Guardar el archivo procesado en MinIO (carpeta 'procesados')
-    const systemFilename = this.filesService.generateFileName(downloadName);
+    // 1. Guardar el archivo ORIGINAL en MinIO (carpeta 'informes_originales')
+    const systemFilename = this.filesService.generateFileName(file.originalname);
     const storagePath = await this.filesService.uploadFile(
-      {
-        buffer: processedBuffer,
-        size: processedBuffer.length,
-        mimetype: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        originalname: downloadName,
-      } as Express.Multer.File,
+      file,
       systemFilename,
-      'procesados'
+      'informes_originales'
     );
 
     // 2. Guardar metadatos en la base de datos
     await this.filesService.saveReportMetadata({
       nombre_original: file.originalname,
       nombre_sistema: systemFilename,
-      tamaño: processedBuffer.length,
+      tamaño: file.size, // Tamaño del original
       url_path: storagePath,
       filas_procesadas: rowCount,
       usuario_id: user.id,
       group_id: groupId,
     });
+
+    // Obtener el nombre para la descarga inmediata (XLSX)
+    const originalBaseName = file.originalname.substring(0, file.originalname.lastIndexOf('.')) || file.originalname;
+    const downloadName = `${originalBaseName}.xlsx`;
 
     res.set({
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -324,19 +319,6 @@ export class FilesController {
     res.send(processedBuffer);
   }
 
-  @Get('processed-reports/history')
-  @UseGuards(SupabaseAuthGuard)
-  async getProcessedReportsHistory(@Req() req: any, @Query('groupId') groupId?: string) {
-    const user = req.user;
-    if (!user) {
-      throw new BadRequestException('Usuario no autenticado');
-    }
-    const history = await this.filesService.getProcessedReportsHistory(user.id, groupId);
-    return {
-      success: true,
-      data: history,
-    };
-  }
 
   @Post('tickets')
   @UseGuards(SupabaseAuthGuard)
