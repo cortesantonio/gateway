@@ -504,29 +504,48 @@ export class FilesService implements OnModuleInit {
         rows.each((j, row) => {
           const cells = $(row).find('td');
           if (cells.length >= 12) {
-            const horaAten = cells.eq(0).text().trim();
-            if (/\d{2}\/\d{2}\/\d{4}/.test(horaAten)) {
-              const [fecha, hora] = horaAten.split(' ');
-              const ficha = cells.eq(1).text().trim();
-              const nombre = cells.eq(2).text().trim();
-              const prestacion = cells.eq(11).text().trim() || cells.eq(9).text().trim();
+            let offset = 0;
+            let horaAten = cells.eq(0).text().trim();
 
-              const celular = cells.eq(13).text().trim();
-              const redFija = cells.eq(14).text().trim();
-              const telefono = celular || redFija;
-
-              appointments.push({
-                fecha,
-                hora,
-                prestacion,
-                profesional: currentProfessional,
-                tipo: currentUnit,
-                nombre,
-                telefono,
-                establecimiento: currentEstablishment,
-                ficha
-              });
+            // Detectar desplazamiento de columnas (a veces hay una columna extra al inicio como 'Familia')
+            if (!/\d{2}\/\d{2}\/\d{4}/.test(horaAten)) {
+              const altHoraAten = cells.eq(1).text().trim();
+              if (/\d{2}\/\d{2}\/\d{4}/.test(altHoraAten)) {
+                horaAten = altHoraAten;
+                offset = 1;
+              } else {
+                return; // No es una fila de datos
+              }
             }
+
+            const [fecha, hora] = horaAten.split(' ');
+            const ficha = cells.eq(1 + offset).text().replace(/_+/g, ' ').trim();
+            const nombre = cells.eq(2 + offset).text().replace(/_+/g, ' ').trim();
+            
+            // La prestación suele estar en la columna 11 o 9 (ajustada por offset)
+            const prestacionRaw = cells.eq(11 + offset).text().trim() || cells.eq(9 + offset).text().trim();
+            const prestacion = prestacionRaw.replace(/_+/g, ' ').trim();
+
+            const celular = cells.eq(13 + offset).text().replace(/_+/g, ' ').trim();
+            const redFija = cells.eq(14 + offset).text().replace(/_+/g, ' ').trim();
+            const telefono = celular || redFija;
+
+            // Intentar extraer RUT si está en la columna extra (usualmente 12 + offset)
+            const extraData = cells.eq(12 + offset).text().trim();
+            const rutMatch = extraData.match(/\d{1,2}\.\d{3}\.\d{3}-[\dkK]/);
+            const rut = rutMatch ? rutMatch[0] : '';
+
+            appointments.push({
+              fecha,
+              hora,
+              prestacion,
+              profesional: currentProfessional,
+              tipo: currentUnit,
+              nombre,
+              telefono,
+              establecimiento: currentEstablishment,
+              ficha: rut ? `${ficha} (RUT: ${rut})` : ficha
+            });
           }
         });
       }
