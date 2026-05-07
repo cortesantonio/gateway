@@ -256,7 +256,7 @@ export class FilesController {
   @Post('process-appointments')
   @UseGuards(SupabaseAuthGuard)
   @UseInterceptors(
-    FilesInterceptor('files', 10, {
+    FilesInterceptor('files', 20, {
       storage: memoryStorage(),
       fileFilter: (req, file, cb) => {
         const ext = file.originalname.toLowerCase().match(/\.(xls|xlsx)$/);
