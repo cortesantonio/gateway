@@ -464,6 +464,117 @@ export class FilesService implements OnModuleInit {
   }
 
   /**
+   * Procesa múltiples archivos XLS (HTML) de citas y los combina en una única plantilla XLSX
+   */
+  async processMultipleAppointmentExcels(files: Express.Multer.File[]): Promise<{ buffer: Buffer; rowCount: number }> {
+    const allAppointments: any[] = [];
+
+    for (const file of files) {
+      // Usar latin1 para manejar correctamente acentos y Ñ de reportes legacy
+      const $ = cheerio.load(file.buffer.toString('latin1'));
+
+      const tables = $('table');
+      let currentEstablishment = '';
+      let currentProfessional = '';
+      let currentUnit = '';
+
+      tables.each((i, table) => {
+        const rows = $(table).find('tr');
+        const firstRowText = rows.first().text().toLowerCase();
+
+        if (firstRowText.includes('centro de salud')) {
+          currentEstablishment = rows.eq(0).find('td').first().text().trim();
+          currentUnit = rows.eq(2).find('td').eq(1).text().trim();
+          currentProfessional = rows.eq(3).find('td').eq(1).text().trim();
+          currentProfessional = currentProfessional.replace(/^\d+\s+/, '').trim();
+        } else if (rows.length > 3 && rows.eq(1).text().includes('Hora')) {
+          rows.each((j, row) => {
+            const cells = $(row).find('td');
+            if (cells.length >= 12) {
+              let offset = 0;
+              let horaAten = cells.eq(0).text().trim();
+
+              if (!/\d{2}\/\d{2}\/\d{4}/.test(horaAten)) {
+                const altHoraAten = cells.eq(1).text().trim();
+                if (/\d{2}\/\d{2}\/\d{4}/.test(altHoraAten)) {
+                  horaAten = altHoraAten;
+                  offset = 1;
+                } else {
+                  return;
+                }
+              }
+
+              const [fecha, hora] = horaAten.split(' ');
+              const ficha = cells.eq(1 + offset).text().replace(/_+/g, ' ').trim();
+              const nombre = cells.eq(2 + offset).text().replace(/_+/g, ' ').trim();
+              
+              const prestacionRaw = cells.eq(11 + offset).text().trim() || cells.eq(9 + offset).text().trim();
+              const prestacion = prestacionRaw.replace(/_+/g, ' ').trim();
+
+              const celular = cells.eq(13 + offset).text().replace(/_+/g, ' ').trim();
+              const redFija = cells.eq(14 + offset).text().replace(/_+/g, ' ').trim();
+              const telefono = celular || redFija;
+
+              const extraData = cells.eq(12 + offset).text().trim();
+              const rutMatch = extraData.match(/\d{1,2}\.\d{3}\.\d{3}-[\dkK]/);
+              const rut = rutMatch ? rutMatch[0] : '';
+
+              allAppointments.push({
+                fecha,
+                hora,
+                prestacion,
+                profesional: currentProfessional,
+                tipo: currentUnit,
+                nombre,
+                telefono,
+                establecimiento: currentEstablishment,
+                ficha: rut ? `${ficha} (RUT: ${rut})` : ficha
+              });
+            }
+          });
+        }
+      });
+    }
+
+    if (allAppointments.length === 0) {
+      throw new BadRequestException('No se encontraron citas en los archivos proporcionados');
+    }
+
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Citas Combinadas');
+
+    const headers = [
+      'Fecha', 'Hora', 'Prestacion', 'Profesional', 'Tipo', 'Nombre', 'Telefono', 'Email', 'Indicaciones', 'Establecimiento', 'Nota'
+    ];
+    worksheet.addRow(headers);
+    worksheet.getRow(1).font = { bold: true };
+
+    allAppointments.forEach((app) => {
+      const row = worksheet.addRow([]);
+      row.getCell(1).value = app.fecha;
+      row.getCell(2).value = app.hora;
+      row.getCell(3).value = '';
+      row.getCell(4).value = app.profesional;
+      row.getCell(5).value = '';
+      row.getCell(6).value = app.nombre;
+      row.getCell(7).value = app.telefono;
+      row.getCell(8).value = '';
+      row.getCell(9).value = '';
+      row.getCell(10).value = '';
+      row.getCell(11).value = app.ficha ? `Ficha: ${app.ficha}` : '';
+      row.commit();
+    });
+
+    worksheet.columns.forEach(column => { column.width = 20; });
+
+    const outputBuffer = Buffer.from(await workbook.xlsx.writeBuffer());
+    return {
+      buffer: outputBuffer,
+      rowCount: allAppointments.length
+    };
+  }
+
+  /**
    * Procesa un archivo XLS (HTML) de citas y completa la plantilla XLSX
    */
   async processAppointmentExcel(buffer: Buffer): Promise<{ buffer: Buffer; rowCount: number }> {

@@ -256,7 +256,7 @@ export class FilesController {
   @Post('process-appointments')
   @UseGuards(SupabaseAuthGuard)
   @UseInterceptors(
-    FileInterceptor('file', {
+    FilesInterceptor('files', 10, {
       storage: memoryStorage(),
       fileFilter: (req, file, cb) => {
         const ext = file.originalname.toLowerCase().match(/\.(xls|xlsx)$/);
@@ -271,13 +271,13 @@ export class FilesController {
     }),
   )
   async processAppointments(
-    @UploadedFile() file: Express.Multer.File,
+    @UploadedFiles() files: Express.Multer.File[],
     @Res() res: Response,
     @Req() req: any,
     @Query('groupId') groupId?: string,
   ) {
-    if (!file) {
-      throw new BadRequestException('No se ha proporcionado el archivo en el campo "file"');
+    if (!files || files.length === 0) {
+      throw new BadRequestException('No se han proporcionado archivos en el campo "files"');
     }
 
     const user = req.user;
@@ -285,30 +285,32 @@ export class FilesController {
       throw new BadRequestException('Usuario no autenticado');
     }
 
-    const { buffer: processedBuffer, rowCount } = await this.filesService.processAppointmentExcel(file.buffer);
+    // 1. Procesar todos los archivos juntos para obtener el buffer combinado
+    const { buffer: processedBuffer, rowCount } = await this.filesService.processMultipleAppointmentExcels(files);
 
-    // 1. Guardar el archivo ORIGINAL en MinIO (carpeta 'informes_originales')
-    const systemFilename = this.filesService.generateFileName(file.originalname);
-    const storagePath = await this.filesService.uploadFile(
-      file,
-      systemFilename,
-      'informes_originales'
-    );
+    // 2. Guardar cada archivo ORIGINAL en MinIO y registrar metadatos
+    for (const file of files) {
+      const systemFilename = this.filesService.generateFileName(file.originalname);
+      const storagePath = await this.filesService.uploadFile(
+        file,
+        systemFilename,
+        'informes_originales'
+      );
 
-    // 2. Guardar metadatos en la base de datos
-    await this.filesService.saveReportMetadata({
-      nombre_original: file.originalname,
-      nombre_sistema: systemFilename,
-      tamaño: file.size, // Tamaño del original
-      url_path: storagePath,
-      filas_procesadas: rowCount,
-      usuario_id: user.id,
-      group_id: groupId,
-    });
+      await this.filesService.saveReportMetadata({
+        nombre_original: file.originalname,
+        nombre_sistema: systemFilename,
+        tamaño: file.size,
+        url_path: storagePath,
+        filas_procesadas: 0, // En este caso, el conteo total es del conjunto, pero guardamos metadatos de cada original
+        usuario_id: user.id,
+        group_id: groupId,
+      });
+    }
 
-    // Obtener el nombre para la descarga inmediata (XLSX)
-    const originalBaseName = file.originalname.substring(0, file.originalname.lastIndexOf('.')) || file.originalname;
-    const downloadName = `${originalBaseName}.xlsx`;
+    // Obtener el nombre para la descarga (usamos el nombre del primer archivo + "_y_otros" si hay más)
+    const firstFileBaseName = files[0].originalname.substring(0, files[0].originalname.lastIndexOf('.')) || files[0].originalname;
+    const downloadName = files.length > 1 ? `${firstFileBaseName}_combinado.xlsx` : `${firstFileBaseName}.xlsx`;
 
     res.set({
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
