@@ -285,11 +285,12 @@ export class FilesController {
       throw new BadRequestException('Usuario no autenticado');
     }
 
-    // 1. Procesar todos los archivos juntos para obtener el buffer combinado
-    const { buffer: processedBuffer, rowCount } = await this.filesService.processMultipleAppointmentExcels(files);
+    // 1. Procesar todos los archivos juntos para obtener el buffer combinado y los conteos individuales
+    const { buffer: processedBuffer, rowCount, fileCounts } = await this.filesService.processMultipleAppointmentExcels(files);
 
     // 2. Guardar cada archivo ORIGINAL en MinIO y registrar metadatos
-    for (const file of files) {
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
       const systemFilename = this.filesService.generateFileName(file.originalname);
       const storagePath = await this.filesService.uploadFile(
         file,
@@ -302,11 +303,17 @@ export class FilesController {
         nombre_sistema: systemFilename,
         tamaño: file.size,
         url_path: storagePath,
-        filas_procesadas: 0, // En este caso, el conteo total es del conjunto, pero guardamos metadatos de cada original
+        filas_procesadas: fileCounts[i] || 0, // Usar el conteo individual detectado
         usuario_id: user.id,
         group_id: groupId,
       });
     }
+
+    // 3. Preparar resumen para el frontend
+    const summary = files.map((f, i) => ({
+      name: f.originalname,
+      count: fileCounts[i] || 0
+    }));
 
     // Obtener el nombre para la descarga (usamos el nombre del primer archivo + "_y_otros" si hay más)
     const firstFileBaseName = files[0].originalname.substring(0, files[0].originalname.lastIndexOf('.')) || files[0].originalname;
@@ -316,6 +323,8 @@ export class FilesController {
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       'Content-Disposition': `attachment; filename="${downloadName}"`,
       'Content-Length': processedBuffer.length.toString(),
+      'X-Processed-Summary': JSON.stringify(summary),
+      'Access-Control-Expose-Headers': 'X-Processed-Summary, Content-Disposition'
     });
 
     res.send(processedBuffer);

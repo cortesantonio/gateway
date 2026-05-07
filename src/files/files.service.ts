@@ -466,75 +466,18 @@ export class FilesService implements OnModuleInit {
   /**
    * Procesa múltiples archivos XLS (HTML) de citas y los combina en una única plantilla XLSX
    */
-  async processMultipleAppointmentExcels(files: Express.Multer.File[]): Promise<{ buffer: Buffer; rowCount: number }> {
+  async processMultipleAppointmentExcels(files: Express.Multer.File[]): Promise<{ buffer: Buffer; rowCount: number; fileCounts: number[] }> {
     const allAppointments: any[] = [];
+    const fileCounts: number[] = [];
 
     for (const file of files) {
-      // Usar latin1 para manejar correctamente acentos y Ñ de reportes legacy
-      const $ = cheerio.load(file.buffer.toString('latin1'));
-
-      const tables = $('table');
-      let currentEstablishment = '';
-      let currentProfessional = '';
-      let currentUnit = '';
-
-      tables.each((i, table) => {
-        const rows = $(table).find('tr');
-        const firstRowText = rows.first().text().toLowerCase();
-
-        if (firstRowText.includes('centro de salud')) {
-          currentEstablishment = rows.eq(0).find('td').first().text().trim();
-          currentUnit = rows.eq(2).find('td').eq(1).text().trim();
-          currentProfessional = rows.eq(3).find('td').eq(1).text().trim();
-          currentProfessional = currentProfessional.replace(/^\d+\s+/, '').trim();
-        } else if (rows.length > 3 && rows.eq(1).text().includes('Hora')) {
-          rows.each((j, row) => {
-            const cells = $(row).find('td');
-            if (cells.length >= 12) {
-              let offset = 0;
-              let horaAten = cells.eq(0).text().trim();
-
-              if (!/\d{2}\/\d{2}\/\d{4}/.test(horaAten)) {
-                const altHoraAten = cells.eq(1).text().trim();
-                if (/\d{2}\/\d{2}\/\d{4}/.test(altHoraAten)) {
-                  horaAten = altHoraAten;
-                  offset = 1;
-                } else {
-                  return;
-                }
-              }
-
-              const [fecha, hora] = horaAten.split(' ');
-              const ficha = cells.eq(1 + offset).text().replace(/_+/g, ' ').trim();
-              const nombre = cells.eq(2 + offset).text().replace(/_+/g, ' ').trim();
-              
-              const prestacionRaw = cells.eq(11 + offset).text().trim() || cells.eq(9 + offset).text().trim();
-              const prestacion = prestacionRaw.replace(/_+/g, ' ').trim();
-
-              const celular = cells.eq(13 + offset).text().replace(/_+/g, ' ').trim();
-              const redFija = cells.eq(14 + offset).text().replace(/_+/g, ' ').trim();
-              const telefono = celular || redFija;
-
-              const extraData = cells.eq(12 + offset).text().trim();
-              const rutMatch = extraData.match(/\d{1,2}\.\d{3}\.\d{3}-[\dkK]/);
-              const rut = rutMatch ? rutMatch[0] : '';
-
-              allAppointments.push({
-                fecha,
-                hora,
-                prestacion,
-                profesional: currentProfessional,
-                tipo: currentUnit,
-                nombre,
-                telefono,
-                establecimiento: currentEstablishment,
-                ficha: rut ? `${ficha} (RUT: ${rut})` : ficha
-              });
-            }
-          });
-        }
-      });
+      const appointmentsInThisFile = this.extractLegacyAppointmentsFromBuffer(file.buffer);
+      allAppointments.push(...appointmentsInThisFile);
+      fileCounts.push(appointmentsInThisFile.length);
+      console.log(`[FilesService] Archivo ${file.originalname}: ${appointmentsInThisFile.length} citas detectadas`);
     }
+    console.log(`[FilesService] Total citas detectadas en todos los archivos: ${allAppointments.length}`);
+    console.log(`[FilesService] Total citas detectadas en todos los archivos: ${allAppointments.length}`);
 
     if (allAppointments.length === 0) {
       throw new BadRequestException('No se encontraron citas en los archivos proporcionados');
@@ -570,7 +513,8 @@ export class FilesService implements OnModuleInit {
     const outputBuffer = Buffer.from(await workbook.xlsx.writeBuffer());
     return {
       buffer: outputBuffer,
-      rowCount: allAppointments.length
+      rowCount: allAppointments.length,
+      fileCounts: fileCounts
     };
   }
 
@@ -578,89 +522,11 @@ export class FilesService implements OnModuleInit {
    * Procesa un archivo XLS (HTML) de citas y completa la plantilla XLSX
    */
   async processAppointmentExcel(buffer: Buffer): Promise<{ buffer: Buffer; rowCount: number }> {
-    // Usar latin1 para manejar correctamente acentos y Ñ de reportes legacy
-    const $ = cheerio.load(buffer.toString('latin1'));
+    const appointments = this.extractLegacyAppointmentsFromBuffer(buffer);
 
-    interface AppointmentData {
-      fecha: string;
-      hora: string;
-      prestacion: string;
-      profesional: string;
-      tipo: string;
-      nombre: string;
-      telefono: string;
-      establecimiento: string;
-      ficha: string;
+    if (appointments.length === 0) {
+      throw new BadRequestException('No se encontraron citas en el archivo proporcionado');
     }
-
-    const appointments: AppointmentData[] = [];
-
-    // Buscar todas las tablas que contienen datos de citas
-    const tables = $('table');
-
-    let currentEstablishment = '';
-    let currentProfessional = '';
-    let currentUnit = '';
-
-    tables.each((i, table) => {
-      const rows = $(table).find('tr');
-      const firstRowText = rows.first().text().toLowerCase();
-
-      if (firstRowText.includes('centro de salud')) {
-        currentEstablishment = rows.eq(0).find('td').first().text().trim();
-        currentUnit = rows.eq(2).find('td').eq(1).text().trim();
-        currentProfessional = rows.eq(3).find('td').eq(1).text().trim();
-        currentProfessional = currentProfessional.replace(/^\d+\s+/, '').trim();
-      } else if (rows.length > 3 && rows.eq(1).text().includes('Hora')) {
-        rows.each((j, row) => {
-          const cells = $(row).find('td');
-          if (cells.length >= 12) {
-            let offset = 0;
-            let horaAten = cells.eq(0).text().trim();
-
-            // Detectar desplazamiento de columnas (a veces hay una columna extra al inicio como 'Familia')
-            if (!/\d{2}\/\d{2}\/\d{4}/.test(horaAten)) {
-              const altHoraAten = cells.eq(1).text().trim();
-              if (/\d{2}\/\d{2}\/\d{4}/.test(altHoraAten)) {
-                horaAten = altHoraAten;
-                offset = 1;
-              } else {
-                return; // No es una fila de datos
-              }
-            }
-
-            const [fecha, hora] = horaAten.split(' ');
-            const ficha = cells.eq(1 + offset).text().replace(/_+/g, ' ').trim();
-            const nombre = cells.eq(2 + offset).text().replace(/_+/g, ' ').trim();
-            
-            // La prestación suele estar en la columna 11 o 9 (ajustada por offset)
-            const prestacionRaw = cells.eq(11 + offset).text().trim() || cells.eq(9 + offset).text().trim();
-            const prestacion = prestacionRaw.replace(/_+/g, ' ').trim();
-
-            const celular = cells.eq(13 + offset).text().replace(/_+/g, ' ').trim();
-            const redFija = cells.eq(14 + offset).text().replace(/_+/g, ' ').trim();
-            const telefono = celular || redFija;
-
-            // Intentar extraer RUT si está en la columna extra (usualmente 12 + offset)
-            const extraData = cells.eq(12 + offset).text().trim();
-            const rutMatch = extraData.match(/\d{1,2}\.\d{3}\.\d{3}-[\dkK]/);
-            const rut = rutMatch ? rutMatch[0] : '';
-
-            appointments.push({
-              fecha,
-              hora,
-              prestacion,
-              profesional: currentProfessional,
-              tipo: currentUnit,
-              nombre,
-              telefono,
-              establecimiento: currentEstablishment,
-              ficha: rut ? `${ficha} (RUT: ${rut})` : ficha
-            });
-          }
-        });
-      }
-    });
 
     if (appointments.length === 0) {
       throw new BadRequestException('No se encontraron citas en el archivo proporcionado');
@@ -748,6 +614,75 @@ export class FilesService implements OnModuleInit {
     }
   }
 
+
+  /**
+   * Extrae citas de un buffer de archivo XLS (HTML) legacy de Sismaule
+   */
+  private extractLegacyAppointmentsFromBuffer(buffer: Buffer): any[] {
+    const $ = cheerio.load(buffer.toString('latin1'));
+    const appointments: any[] = [];
+    const tables = $('table');
+
+    let currentEstablishment = '';
+    let currentProfessional = '';
+    let currentUnit = '';
+
+    tables.each((i, table) => {
+      const rows = $(table).find('tr');
+      const firstRowText = rows.first().text().toLowerCase();
+
+      if (firstRowText.includes('centro de salud')) {
+        currentEstablishment = rows.eq(0).find('td').first().text().trim();
+        currentUnit = rows.eq(2).find('td').eq(1).text().trim();
+        currentProfessional = rows.eq(3).find('td').eq(1).text().trim();
+        currentProfessional = currentProfessional.replace(/^\d+\s+/, '').trim();
+      } else if (rows.length > 3 && rows.eq(1).text().includes('Hora')) {
+        rows.each((j, row) => {
+          const cells = $(row).find('td');
+          if (cells.length >= 12) {
+            let offset = 0;
+            let horaAten = cells.eq(0).text().trim();
+
+            if (!/\d{2}\/\d{2}\/\d{4}/.test(horaAten)) {
+              const altHoraAten = cells.eq(1).text().trim();
+              if (/\d{2}\/\d{2}\/\d{4}/.test(altHoraAten)) {
+                horaAten = altHoraAten;
+                offset = 1;
+              } else {
+                return;
+              }
+            }
+
+            const [fecha, hora] = horaAten.split(' ');
+            const ficha = cells.eq(1 + offset).text().replace(/_+/g, ' ').trim();
+            const nombre = cells.eq(2 + offset).text().replace(/_+/g, ' ').trim();
+            const prestacionRaw = cells.eq(11 + offset).text().trim() || cells.eq(9 + offset).text().trim();
+            const prestacion = prestacionRaw.replace(/_+/g, ' ').trim();
+            const celular = cells.eq(13 + offset).text().replace(/_+/g, ' ').trim();
+            const redFija = cells.eq(14 + offset).text().replace(/_+/g, ' ').trim();
+            const telefono = celular || redFija;
+            const extraData = cells.eq(12 + offset).text().trim();
+            const rutMatch = extraData.match(/\d{1,2}\.\d{3}\.\d{3}-[\dkK]/);
+            const rut = rutMatch ? rutMatch[0] : '';
+
+            appointments.push({
+              fecha,
+              hora,
+              prestacion,
+              profesional: currentProfessional,
+              tipo: currentUnit,
+              nombre,
+              telefono,
+              establecimiento: currentEstablishment,
+              ficha: rut ? `${ficha} (RUT: ${rut})` : ficha
+            });
+          }
+        });
+      }
+    });
+
+    return appointments;
+  }
 
   private hasSuspiciousDoubleExtension(filename: string): boolean {
     const sanitizedName = filename.toLowerCase().replace(/\s+/g, '');
