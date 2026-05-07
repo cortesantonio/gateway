@@ -474,10 +474,7 @@ export class FilesService implements OnModuleInit {
       const appointmentsInThisFile = this.extractLegacyAppointmentsFromBuffer(file.buffer);
       allAppointments.push(...appointmentsInThisFile);
       fileCounts.push(appointmentsInThisFile.length);
-      console.log(`[FilesService] Archivo ${file.originalname}: ${appointmentsInThisFile.length} citas detectadas`);
     }
-    console.log(`[FilesService] Total citas detectadas en todos los archivos: ${allAppointments.length}`);
-    console.log(`[FilesService] Total citas detectadas en todos los archivos: ${allAppointments.length}`);
 
     if (allAppointments.length === 0) {
       throw new BadRequestException('No se encontraron citas en los archivos proporcionados');

@@ -288,36 +288,43 @@ export class FilesController {
     // 1. Procesar todos los archivos juntos para obtener el buffer combinado y los conteos individuales
     const { buffer: processedBuffer, rowCount, fileCounts } = await this.filesService.processMultipleAppointmentExcels(files);
 
-    // 2. Guardar cada archivo ORIGINAL en MinIO y registrar metadatos
+    // 2. Guardar el archivo PROCESADO (combinado) en MinIO una sola vez
+    const firstFileOriginalName = files[0].originalname;
+    const baseName = firstFileOriginalName.substring(0, firstFileOriginalName.lastIndexOf('.')) || firstFileOriginalName;
+    const downloadName = files.length > 1 ? `${baseName}_combinado.xlsx` : `${baseName}_procesado.xlsx`;
+    const systemFilename = this.filesService.generateFileName(downloadName);
+
+    const storagePath = await this.filesService.uploadFile(
+      {
+        buffer: processedBuffer,
+        size: processedBuffer.length,
+        mimetype: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        originalname: downloadName,
+      } as any,
+      systemFilename,
+      'informes_procesados'
+    );
+
+    // 3. Registrar metadatos para cada archivo ORIGINAL, pero apuntando al resultado procesado
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
-      const systemFilename = this.filesService.generateFileName(file.originalname);
-      const storagePath = await this.filesService.uploadFile(
-        file,
-        systemFilename,
-        'informes_originales'
-      );
 
       await this.filesService.saveReportMetadata({
-        nombre_original: file.originalname,
+        nombre_original: downloadName, // Reemplazamos el nombre original por el nombre del resultado
         nombre_sistema: systemFilename,
-        tamaño: file.size,
+        tamaño: processedBuffer.length, 
         url_path: storagePath,
-        filas_procesadas: fileCounts[i] || 0, // Usar el conteo individual detectado
+        filas_procesadas: fileCounts[i] || 0,
         usuario_id: user.id,
         group_id: groupId,
       });
     }
 
-    // 3. Preparar resumen para el frontend
+    // 3. Preparar resumen para el frontend (usando el nombre del resultado para ocultar el original)
     const summary = files.map((f, i) => ({
-      name: f.originalname,
+      name: downloadName,
       count: fileCounts[i] || 0
     }));
-
-    // Obtener el nombre para la descarga (usamos el nombre del primer archivo + "_y_otros" si hay más)
-    const firstFileBaseName = files[0].originalname.substring(0, files[0].originalname.lastIndexOf('.')) || files[0].originalname;
-    const downloadName = files.length > 1 ? `${firstFileBaseName}_combinado.xlsx` : `${firstFileBaseName}.xlsx`;
 
     res.set({
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
