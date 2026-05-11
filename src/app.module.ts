@@ -12,6 +12,7 @@ import { MercadoPublicoModule } from './mercadopublico/mercadopublico.module';
 import { MercadoPublicoScraperModule } from './mercadopublico-scraper/mercadopublico-scraper.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { MonitoringModule } from './monitoring/monitoring.module';
+import { MassMailModule } from './mass-mail/mass-mail.module';
 
 @Module({
     imports: [
@@ -31,6 +32,7 @@ import { MonitoringModule } from './monitoring/monitoring.module';
         FilesModule,
         AuthModule,
         UsersModule,
+        MassMailModule,
         MercadoPublicoModule,
         MercadoPublicoScraperModule,
         MonitoringModule,
