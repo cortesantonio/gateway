@@ -43,10 +43,10 @@ export class MassMailProcessor extends WorkerHost {
         while (!this.isWorkingHours()) {
             // Esperar 1 minuto antes de volver a verificar
             await new Promise(resolve => setTimeout(resolve, 60000));
-            
+
             // Notificar progreso para mantener vivo el lock
             await job.updateProgress(0);
-            
+
             const now = new Date();
             if (now.getMinutes() % 15 === 0) { // Loguear cada 15 min para no saturar
                 this.logger.log(`Still outside working hours. Waiting for next window (Mon-Fri 08:00-18:00)...`);
@@ -65,11 +65,11 @@ export class MassMailProcessor extends WorkerHost {
 
         this.logger.log(`Processing email for ${recipient} (Job ID: ${job.id})`);
 
-        // Anti-spam: Random delay between 30 seconds and 2 minutes
-        const minDelay = 30000;
-        const maxDelay = 120000;
+        // Anti-spam: Random delay between 15 seconds and 60 seconds
+        const minDelay = 15000;
+        const maxDelay = 60000;
         const randomDelay = Math.floor(Math.random() * (maxDelay - minDelay + 1)) + minDelay;
-        
+
         this.logger.log(`Waiting ${Math.round(randomDelay / 1000)}s before sending to ${recipient} (Zimbra Rate-limit protection)`);
         await new Promise(resolve => setTimeout(resolve, randomDelay));
 
@@ -106,7 +106,7 @@ export class MassMailProcessor extends WorkerHost {
 
             // Update status to failed
             const isFinalAttempt = job.attemptsMade >= (job.opts.attempts || 1);
-            
+
             await client
                 .from('email_logs')
                 .update({
