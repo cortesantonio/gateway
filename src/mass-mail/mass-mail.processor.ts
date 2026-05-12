@@ -1,5 +1,5 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
-import { Job } from 'bullmq';
+import { Job, UnrecoverableError } from 'bullmq';
 import { Logger } from '@nestjs/common';
 import { MailService } from '../mail/mail.service';
 import { SupabaseService } from '../auth/supabase.service';
@@ -41,52 +41,52 @@ export class MassMailProcessor extends WorkerHost {
         this.logger.log(`Outside working hours. Pausing processing for Job ${job.id}...`);
 
         while (!this.isWorkingHours()) {
-            // Esperar 1 minuto antes de volver a verificar
+            await job.updateProgress({ status: 'paused_working_hours', message: 'Esperando ventana laboral (Lun-Vie 08:00-18:00)' });
             await new Promise(resolve => setTimeout(resolve, 60000));
-
-            // Notificar progreso para mantener vivo el lock
-            await job.updateProgress(0);
-
-            const now = new Date();
-            if (now.getMinutes() % 15 === 0) { // Loguear cada 15 min para no saturar
-                this.logger.log(`Still outside working hours. Waiting for next window (Mon-Fri 08:00-18:00)...`);
-            }
         }
 
         this.logger.log('Working hours reached. Resuming processing...');
     }
 
     async process(job: Job<any, any, string>): Promise<any> {
-        // Verificar jornada laboral antes de procesar
         await this.waitForWorkingHours(job);
 
         const { logId, recipient, subject, body, vars } = job.data;
         const client = this.supabaseService.getClient();
 
+        await job.updateProgress({ status: 'processing', message: 'Preparando envío' });
+
         this.logger.log(`Processing email for ${recipient} (Job ID: ${job.id})`);
 
-        // Anti-spam: Random delay between 15 seconds and 60 seconds
-        const minDelay = 15000;
-        const maxDelay = 60000;
+        // Paso 5: Optimización del Anti-Spam Delay
+        const minDelay = 30000; // 30s
+        const maxDelay = 120000; // 120s
         const randomDelay = Math.floor(Math.random() * (maxDelay - minDelay + 1)) + minDelay;
+        const delayInSecs = Math.round(randomDelay / 1000);
 
-        this.logger.log(`Waiting ${Math.round(randomDelay / 1000)}s before sending to ${recipient} (Zimbra Rate-limit protection)`);
+        this.logger.log(`Waiting ${delayInSecs}s before sending to ${recipient} (Zimbra Rate-limit protection)`);
+        await job.updateProgress({ status: 'anti_spam_delay', message: `Pausa anti-spam de ${delayInSecs}s` });
         await new Promise(resolve => setTimeout(resolve, randomDelay));
 
-        // Helper to replace variables
+        // Paso 2: Generación segura de variables (Fallback y limpieza)
         const replaceVars = (text: string, variables: Record<string, string>) => {
             let processedText = text;
             Object.entries(variables).forEach(([key, value]) => {
                 const regex = new RegExp(`{{${key}}}`, 'g');
-                processedText = processedText.replace(regex, value || '');
+                // Fallback a string vacío si es null o undefined
+                processedText = processedText.replace(regex, value ?? '');
             });
-            return processedText;
+            // Limpiar variables remanentes no reemplazadas para no romper el diseño
+            return processedText.replace(/{{[^}]+}}/g, '');
         };
 
         const finalSubject = replaceVars(subject, vars || {});
         const finalBody = replaceVars(body, vars || {});
 
         try {
+            // Paso 3: Progreso en tiempo real
+            await job.updateProgress({ status: 'sending', message: 'Enviando correo' });
+
             // Send email with processed template
             await this.mailService.sendMail(recipient, finalSubject, finalBody);
 
@@ -100,21 +100,30 @@ export class MassMailProcessor extends WorkerHost {
                 })
                 .eq('id', logId);
 
+            await job.updateProgress({ status: 'completed', message: 'Enviado correctamente' });
             return { success: true };
+            
         } catch (error) {
-            this.logger.error(`Failed to send email to ${recipient}`, error.stack);
+            this.logger.error(`Failed to send email to ${recipient}: ${error.message}`, error.stack);
 
-            // Update status to failed
             const isFinalAttempt = job.attemptsMade >= (job.opts.attempts || 1);
+            
+            // Paso 4: Manejo de Errores Irrecuperables
+            const isUnrecoverable = error.message.includes('Invalid login') || error.message.includes('No recipients defined') || error.message.includes('Rejected');
 
             await client
                 .from('email_logs')
                 .update({
-                    status: isFinalAttempt ? 'failed' : 'pending',
+                    status: (isFinalAttempt || isUnrecoverable) ? 'failed' : 'pending',
                     error_message: error.message,
                     retry_count: job.attemptsMade
                 })
                 .eq('id', logId);
+
+            if (isUnrecoverable) {
+                this.logger.error(`Unrecoverable error for ${recipient}. Cancelling retries.`);
+                throw new UnrecoverableError(error.message);
+            }
 
             throw error;
         }

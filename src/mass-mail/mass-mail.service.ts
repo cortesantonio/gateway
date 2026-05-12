@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import * as crypto from 'crypto';
@@ -14,18 +14,31 @@ export class MassMailService {
         private readonly supabaseService: SupabaseService,
     ) { }
 
+    // Paso 1: Validación de formato de correo
+    private isValidEmail(email: string): boolean {
+        const regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        return regex.test(email);
+    }
+
     async enqueueEmails(dto: SendMassMailDto) {
         const { recipients, subject, body, groupId: providedGroupId } = dto;
         const client = this.supabaseService.getClient();
-        
+
+        // Filtrar correos inválidos
+        const validRecipients = recipients.filter(r => r.email && this.isValidEmail(r.email.trim()));
+
+        if (validRecipients.length === 0) {
+            throw new BadRequestException('No hay destinatarios válidos para procesar.');
+        }
+
         // Generate a unique group_id for this batch if not provided
         const groupId = providedGroupId || crypto.randomUUID();
 
-        this.logger.log(`Enqueuing ${recipients.length} emails for group: ${groupId}`);
+        this.logger.log(`Enqueuing ${validRecipients.length} valid emails for group: ${groupId} (filtered ${recipients.length - validRecipients.length} invalid)`);
 
         // Prepare logs for DB
-        const logs = recipients.map(r => ({
-            recipient: r.email,
+        const logs = validRecipients.map(r => ({
+            recipient: r.email.trim().toLowerCase(),
             subject,
             body,
             group_id: groupId,
@@ -56,10 +69,10 @@ export class MassMailService {
                 vars: (log.metadata as any)?.vars || {},
             },
             opts: {
-                attempts: 5,
+                attempts: 3, // Reducido a 3 para no sobrecargar si hay fallos persistentes
                 backoff: {
                     type: 'exponential',
-                    delay: 5000,
+                    delay: 10000,
                 },
                 removeOnComplete: true,
                 removeOnFail: false,
@@ -69,8 +82,9 @@ export class MassMailService {
         await this.mailQueue.addBulk(jobs);
 
         return {
-            count: recipients.length,
+            count: validRecipients.length,
             groupId,
+            invalidCount: recipients.length - validRecipients.length
         };
     }
 
@@ -96,21 +110,107 @@ export class MassMailService {
     }
 
     async getQueueStats() {
-        const [waiting, active, completed, failed, delayed] = await Promise.all([
+        const client = this.supabaseService.getClient();
+
+        // 1. Redis queue counts (real-time queue state)
+        const [waiting, active, delayed, failedQueue] = await Promise.all([
             this.mailQueue.getWaitingCount(),
             this.mailQueue.getActiveCount(),
-            this.mailQueue.getCompletedCount(),
-            this.mailQueue.getFailedCount(),
             this.mailQueue.getDelayedCount(),
+            this.mailQueue.getFailedCount(),
         ]);
 
+        // 2. DB counts (source of truth for completed/failed/pending)
+        const [pendingRes, sentRes, failedRes] = await Promise.all([
+            client.from('email_logs').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
+            client.from('email_logs').select('id', { count: 'exact', head: true }).eq('status', 'sent'),
+            client.from('email_logs').select('id', { count: 'exact', head: true }).eq('status', 'failed'),
+        ]);
+
+        const dbCounts = {
+            pending: pendingRes.count ?? 0,
+            sent: sentRes.count ?? 0,
+            failed: failedRes.count ?? 0,
+            total: (pendingRes.count ?? 0) + (sentRes.count ?? 0) + (failedRes.count ?? 0),
+        };
+
+        // 3. Get the latest batch info (most recent group)
+        const { data: latestBatch } = await client
+            .from('email_logs')
+            .select('group_id, queued_at')
+            .order('queued_at', { ascending: false })
+            .limit(1)
+            .single();
+
+        let batchInfo: {
+            groupId: string;
+            queuedAt: string;
+            total: number;
+            sent: number;
+            failed: number;
+            pending: number;
+            progress: number;
+        } | null = null;
+        if (latestBatch) {
+            const { data: batchStats } = await client
+                .from('email_logs')
+                .select('status')
+                .eq('group_id', latestBatch.group_id);
+
+            if (batchStats) {
+                const batchTotal = batchStats.length;
+                const batchSent = batchStats.filter(r => r.status === 'sent').length;
+                const batchFailed = batchStats.filter(r => r.status === 'failed').length;
+                const batchPending = batchStats.filter(r => r.status === 'pending').length;
+
+                batchInfo = {
+                    groupId: latestBatch.group_id,
+                    queuedAt: latestBatch.queued_at,
+                    total: batchTotal,
+                    sent: batchSent,
+                    failed: batchFailed,
+                    pending: batchPending,
+                    progress: batchTotal > 0 ? Math.round((batchSent / batchTotal) * 100) : 0,
+
+                };
+            }
+        }
+
+        // 4. Get active/next jobs from Redis queue
+        const activeJobs = await this.mailQueue.getActive(0, 4);
+        const waitingJobs = await this.mailQueue.getWaiting(0, 4);
+
+        const activeDetails = activeJobs.map(j => ({
+            id: j.id,
+            recipient: j.data?.recipient,
+            progress: j.progress,
+            timestamp: j.timestamp,
+            attemptsMade: j.attemptsMade,
+        }));
+
+        const nextUp = waitingJobs.map(j => ({
+            id: j.id,
+            recipient: j.data?.recipient,
+        }));
+
+        // 5. Estimated time remaining (avg 75s per email — midpoint of 30–120s delay)
+        const remainingInQueue = waiting + delayed;
+        const estimatedSecondsRemaining = remainingInQueue * 75;
+
         return {
-            waiting,
-            active,
-            completed,
-            failed,
-            delayed,
-            total: waiting + active + delayed
+            // Redis real-time
+            queue: { waiting, active, delayed, failed: failedQueue },
+            // DB ground truth
+            db: dbCounts,
+            // Latest batch progress
+            batch: batchInfo,
+            // Active job details
+            activeJobs: activeDetails,
+            nextUp,
+            // ETA
+            estimatedSecondsRemaining,
+            // Derived
+            isProcessing: active > 0 || waiting > 0 || delayed > 0,
         };
     }
 }
