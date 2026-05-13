@@ -120,18 +120,20 @@ export class MassMailService {
             this.mailQueue.getFailedCount(),
         ]);
 
-        // 2. DB counts (source of truth for completed/failed/pending)
-        const [pendingRes, sentRes, failedRes] = await Promise.all([
+        // 2. DB counts (source of truth for completed/failed/pending/bounced)
+        const [pendingRes, sentRes, failedRes, bouncedRes] = await Promise.all([
             client.from('email_logs').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
             client.from('email_logs').select('id', { count: 'exact', head: true }).eq('status', 'sent'),
             client.from('email_logs').select('id', { count: 'exact', head: true }).eq('status', 'failed'),
+            client.from('email_logs').select('id', { count: 'exact', head: true }).eq('status', 'bounced'),
         ]);
 
         const dbCounts = {
             pending: pendingRes.count ?? 0,
             sent: sentRes.count ?? 0,
             failed: failedRes.count ?? 0,
-            total: (pendingRes.count ?? 0) + (sentRes.count ?? 0) + (failedRes.count ?? 0),
+            bounced: bouncedRes.count ?? 0,
+            total: (pendingRes.count ?? 0) + (sentRes.count ?? 0) + (failedRes.count ?? 0) + (bouncedRes.count ?? 0),
         };
 
         // 3. Get the latest batch info (most recent group)
@@ -148,6 +150,7 @@ export class MassMailService {
             total: number;
             sent: number;
             failed: number;
+            bounced: number;
             pending: number;
             progress: number;
         } | null = null;
@@ -161,6 +164,7 @@ export class MassMailService {
                 const batchTotal = batchStats.length;
                 const batchSent = batchStats.filter(r => r.status === 'sent').length;
                 const batchFailed = batchStats.filter(r => r.status === 'failed').length;
+                const batchBounced = batchStats.filter(r => r.status === 'bounced').length;
                 const batchPending = batchStats.filter(r => r.status === 'pending').length;
 
                 batchInfo = {
@@ -169,9 +173,9 @@ export class MassMailService {
                     total: batchTotal,
                     sent: batchSent,
                     failed: batchFailed,
+                    bounced: batchBounced,
                     pending: batchPending,
-                    progress: batchTotal > 0 ? Math.round((batchSent / batchTotal) * 100) : 0,
-
+                    progress: batchTotal > 0 ? Math.round(((batchSent + batchBounced + batchFailed) / batchTotal) * 100) : 0,
                 };
             }
         }

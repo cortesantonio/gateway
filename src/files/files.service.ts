@@ -628,7 +628,14 @@ export class FilesService implements OnModuleInit {
       const rows = $(table).find('tr');
       const firstRowText = rows.first().text().toLowerCase();
 
-      if (firstRowText.includes('centro de salud')) {
+      // Identificamos la tabla principal por su estructura ("Recurso" o "Unidad") en lugar del nombre del establecimiento
+      // Esto permite que funcione con cualquier centro (Hospital, CESFAM, CECOSF, Posta, etc.)
+      const isHeaderTable = rows.length >= 4 && (
+        rows.eq(3).find('td').first().text().trim().toLowerCase().includes('recurso') ||
+        rows.eq(2).find('td').first().text().trim().toLowerCase().includes('unidad')
+      );
+
+      if (isHeaderTable) {
         currentEstablishment = rows.eq(0).find('td').first().text().trim();
         currentUnit = rows.eq(2).find('td').eq(1).text().trim();
         currentProfessional = rows.eq(3).find('td').eq(1).text().trim();
