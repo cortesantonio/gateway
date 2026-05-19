@@ -8,7 +8,8 @@ import { firstValueFrom } from 'rxjs';
 
 @Injectable()
 export class MercadoPublicoService {
-  private readonly baseUrl = 'https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json';
+  private readonly baseUrl =
+    'https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json';
   private readonly webhookUrl: string;
   private readonly ticket: string;
 
@@ -17,8 +18,10 @@ export class MercadoPublicoService {
     private readonly configService: ConfigService,
     @Inject(CACHE_MANAGER) private cacheManager: Cache,
   ) {
-    this.ticket = this.configService.get<string>('MERCADO_PUBLICO_TICKET') || '';
-    this.webhookUrl = this.configService.get<string>('MERCADO_PUBLICO_WEBHOOK_URL') || '';
+    this.ticket =
+      this.configService.get<string>('MERCADO_PUBLICO_TICKET') || '';
+    this.webhookUrl =
+      this.configService.get<string>('MERCADO_PUBLICO_WEBHOOK_URL') || '';
   }
 
   /**
@@ -26,7 +29,9 @@ export class MercadoPublicoService {
    */
   @Cron(CronExpression.EVERY_30_MINUTES)
   async handleCron() {
-    console.log('[MercadoPublico] CRON: Iniciando actualización automática desde webhook...');
+    console.log(
+      '[MercadoPublico] CRON: Iniciando actualización automática desde webhook...',
+    );
     await this.findAll();
     console.log('[MercadoPublico] CRON: Cache actualizado exitosamente.');
   }
@@ -45,13 +50,19 @@ export class MercadoPublicoService {
     }
 
     try {
-      console.log(`[MercadoPublico] API CALL: Fetching list from internal webhook...`);
+      console.log(
+        `[MercadoPublico] API CALL: Fetching list from internal webhook...`,
+      );
       const { data } = await firstValueFrom(
-        this.httpService.get(this.webhookUrl)
+        this.httpService.get(this.webhookUrl),
       );
 
       if (!Array.isArray(data) || data.length === 0) {
-        return { Cantidad: 0, Listado: [], message: 'No se encontraron licitaciones en el webhook' };
+        return {
+          Cantidad: 0,
+          Listado: [],
+          message: 'No se encontraron licitaciones en el webhook',
+        };
       }
 
       // Transformamos el array del webhook al formato estándar de Mercado Publico
@@ -63,12 +74,12 @@ export class MercadoPublicoService {
         Estado: item.estado,
         UrlFicha: item.url_ficha,
         // Agregamos el resto de campos que podrían venir, por si acaso
-        ...item
+        ...item,
       }));
 
       const transformedData = {
         Cantidad: listado.length,
-        Listado: listado
+        Listado: listado,
       };
 
       // Guardar en cache el resultado transformado
@@ -94,20 +105,26 @@ export class MercadoPublicoService {
       url.searchParams.append('ticket', this.ticket);
       url.searchParams.append('codigo', codigo);
 
-      console.log(`[MercadoPublico] API CALL (REAL-TIME OFFICIAL): Fetching detail for ${codigo}`);
+      console.log(
+        `[MercadoPublico] API CALL (REAL-TIME OFFICIAL): Fetching detail for ${codigo}`,
+      );
       const { data } = await firstValueFrom(
-        this.httpService.get(url.toString())
+        this.httpService.get(url.toString()),
       );
 
       if (!data || data.Cantidad === 0) {
-        throw new HttpException('Licitación no encontrada en Mercado Público', HttpStatus.NOT_FOUND);
+        throw new HttpException(
+          'Licitación no encontrada en Mercado Público',
+          HttpStatus.NOT_FOUND,
+        );
       }
 
       return data;
     } catch (error) {
       if (error instanceof HttpException) throw error;
       throw new HttpException(
-        error.response?.data || 'Error al consultar detalle oficial de licitación',
+        error.response?.data ||
+          'Error al consultar detalle oficial de licitación',
         error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
@@ -127,16 +144,18 @@ export class MercadoPublicoService {
 
     // Usamos findAll (que ya consulta el webhook y tiene su propio cache)
     const webhookData: any = await this.findAll();
-    if (!webhookData || !webhookData.Listado) return { Cantidad: 0, Listado: [] };
+    if (!webhookData || !webhookData.Listado)
+      return { Cantidad: 0, Listado: [] };
 
-    const filtered = webhookData.Listado.filter((l: any) =>
-      l.Nombre?.toLowerCase().includes(query.toLowerCase()) ||
-      l.CodigoExterno?.toLowerCase().includes(query.toLowerCase())
+    const filtered = webhookData.Listado.filter(
+      (l: any) =>
+        l.Nombre?.toLowerCase().includes(query.toLowerCase()) ||
+        l.CodigoExterno?.toLowerCase().includes(query.toLowerCase()),
     );
 
     const result = {
       Cantidad: filtered.length,
-      Listado: filtered
+      Listado: filtered,
     };
 
     // Guardamos el resultado del filtro específico en cache

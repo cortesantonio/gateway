@@ -1,4 +1,10 @@
-import { Injectable, BadRequestException, NotFoundException, OnModuleInit, HttpStatus } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  NotFoundException,
+  OnModuleInit,
+  HttpStatus,
+} from '@nestjs/common';
 import { extname } from 'path';
 import * as Minio from 'minio';
 import { randomUUID } from 'crypto';
@@ -35,10 +41,38 @@ export class FilesService implements OnModuleInit {
     'text/plain',
   ];
   private readonly allowedExtensions = [
-    '.jpg', '.jpeg', '.png', '.gif', '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.csv',
-    '.mp4', '.mov', '.avi', '.webm', '.webp', '.txt'
+    '.jpg',
+    '.jpeg',
+    '.png',
+    '.gif',
+    '.pdf',
+    '.doc',
+    '.docx',
+    '.xls',
+    '.xlsx',
+    '.csv',
+    '.mp4',
+    '.mov',
+    '.avi',
+    '.webm',
+    '.webp',
+    '.txt',
   ];
-  private readonly blockedDoubleExtensions = ['.exe', '.com', '.bat', '.cmd', '.sh', '.msi', '.js', '.jar', '.vbs', '.ps1', '.php', '.py', '.rb'];
+  private readonly blockedDoubleExtensions = [
+    '.exe',
+    '.com',
+    '.bat',
+    '.cmd',
+    '.sh',
+    '.msi',
+    '.js',
+    '.jar',
+    '.vbs',
+    '.ps1',
+    '.php',
+    '.py',
+    '.rb',
+  ];
   private readonly maxFileSize = 10 * 1024 * 1024; // 10MB
 
   constructor(private readonly supabaseService: SupabaseService) {
@@ -90,7 +124,9 @@ export class FilesService implements OnModuleInit {
     // Validar extensión
     const normalizedOriginalName = file.originalname.toLowerCase();
     if (this.hasSuspiciousDoubleExtension(normalizedOriginalName)) {
-      throw new BadRequestException('Nombre de archivo inválido o contiene extensiones peligrosas');
+      throw new BadRequestException(
+        'Nombre de archivo inválido o contiene extensiones peligrosas',
+      );
     }
 
     const fileExtension = extname(file.originalname).toLowerCase();
@@ -122,11 +158,15 @@ export class FilesService implements OnModuleInit {
 
     const fileExtension = extname(file.originalname).toLowerCase();
     if (fileExtension !== '.pdf') {
-      throw new BadRequestException('Solo se permiten archivos PDF para oficios');
+      throw new BadRequestException(
+        'Solo se permiten archivos PDF para oficios',
+      );
     }
 
     if (file.mimetype !== 'application/pdf') {
-      throw new BadRequestException('Tipo MIME inválido. Solo se acepta application/pdf');
+      throw new BadRequestException(
+        'Tipo MIME inválido. Solo se acepta application/pdf',
+      );
     }
   }
 
@@ -147,7 +187,10 @@ export class FilesService implements OnModuleInit {
   /**
    * Lógica común para validar hojas de cálculo (Excel / CSV)
    */
-  private _validateSpreadsheet(file: Express.Multer.File, context: string): void {
+  private _validateSpreadsheet(
+    file: Express.Multer.File,
+    context: string,
+  ): void {
     if (!file) {
       throw new BadRequestException('No se ha proporcionado ningún archivo');
     }
@@ -241,7 +284,9 @@ export class FilesService implements OnModuleInit {
     // Validar extensión
     const normalizedOriginalName = file.originalname.toLowerCase();
     if (this.hasSuspiciousDoubleExtension(normalizedOriginalName)) {
-      throw new BadRequestException('Nombre de archivo inválido o contiene extensiones peligrosas');
+      throw new BadRequestException(
+        'Nombre de archivo inválido o contiene extensiones peligrosas',
+      );
     }
 
     const fileExtension = extname(file.originalname).toLowerCase();
@@ -253,7 +298,9 @@ export class FilesService implements OnModuleInit {
 
     // Validar MIME type
     if (!this.allowedMimeTypes.includes(file.mimetype)) {
-      throw new BadRequestException(`Tipo MIME no permitido para tickets: ${file.mimetype}`);
+      throw new BadRequestException(
+        `Tipo MIME no permitido para tickets: ${file.mimetype}`,
+      );
     }
   }
 
@@ -291,7 +338,11 @@ export class FilesService implements OnModuleInit {
    *                Si se omite, el archivo se almacena en la raíz del bucket.
    * @returns       La clave completa con la que se almacena en MinIO (incluye carpeta si se especificó).
    */
-  async uploadFile(file: Express.Multer.File, filename: string, folder?: string): Promise<string> {
+  async uploadFile(
+    file: Express.Multer.File,
+    filename: string,
+    folder?: string,
+  ): Promise<string> {
     try {
       const sanitizedFilename = this.sanitizeFilename(filename);
       // Construir la clave MinIO: 'folder/filename' o simplemente 'filename'
@@ -311,7 +362,9 @@ export class FilesService implements OnModuleInit {
 
       return key; // Retorna la clave completa (con carpeta si aplica)
     } catch (error) {
-      throw new BadRequestException(`Error al subir el archivo: ${error.message}`);
+      throw new BadRequestException(
+        `Error al subir el archivo: ${error.message}`,
+      );
     }
   }
 
@@ -334,9 +387,13 @@ export class FilesService implements OnModuleInit {
   async getFileInfo(filename: string) {
     try {
       const sanitizedFilename = this.sanitizeFilename(filename);
-      const stat = await this.minioClient.statObject(this.bucketName, sanitizedFilename);
+      const stat = await this.minioClient.statObject(
+        this.bucketName,
+        sanitizedFilename,
+      );
 
-      const originalNameEncoded = stat.metaData['original-name'] || sanitizedFilename;
+      const originalNameEncoded =
+        stat.metaData['original-name'] || sanitizedFilename;
       let originalName = originalNameEncoded;
       try {
         originalName = decodeURIComponent(originalNameEncoded);
@@ -348,16 +405,22 @@ export class FilesService implements OnModuleInit {
       return {
         filename: sanitizedFilename,
         size: stat.size,
-        contentType: stat.metaData['content-type'] || this.getMimeType(sanitizedFilename),
+        contentType:
+          stat.metaData['content-type'] || this.getMimeType(sanitizedFilename),
         originalName: originalName,
         lastModified: stat.lastModified,
         etag: stat.etag,
       };
     } catch (error) {
-      if (error.code === 'NotFound' || error.message?.includes('does not exist')) {
+      if (
+        error.code === 'NotFound' ||
+        error.message?.includes('does not exist')
+      ) {
         throw new NotFoundException('Archivo no encontrado');
       }
-      throw new NotFoundException(`Error al obtener información del archivo: ${error.message}`);
+      throw new NotFoundException(
+        `Error al obtener información del archivo: ${error.message}`,
+      );
     }
   }
 
@@ -369,7 +432,10 @@ export class FilesService implements OnModuleInit {
       const sanitizedFilename = this.sanitizeFilename(filename);
       const chunks: Buffer[] = [];
 
-      const dataStream = await this.minioClient.getObject(this.bucketName, sanitizedFilename);
+      const dataStream = await this.minioClient.getObject(
+        this.bucketName,
+        sanitizedFilename,
+      );
 
       return new Promise((resolve, reject) => {
         dataStream.on('data', (chunk) => {
@@ -381,18 +447,30 @@ export class FilesService implements OnModuleInit {
         });
 
         dataStream.on('error', (err: any) => {
-          if (err?.code === 'NotFound' || err?.message?.includes('does not exist')) {
+          if (
+            err?.code === 'NotFound' ||
+            err?.message?.includes('does not exist')
+          ) {
             reject(new NotFoundException('Archivo no encontrado'));
           } else {
-            reject(new NotFoundException(`Error al obtener el archivo: ${err?.message || 'Error desconocido'}`));
+            reject(
+              new NotFoundException(
+                `Error al obtener el archivo: ${err?.message || 'Error desconocido'}`,
+              ),
+            );
           }
         });
       });
     } catch (error: any) {
-      if (error?.status === HttpStatus.NOT_FOUND || error instanceof NotFoundException) {
+      if (
+        error?.status === HttpStatus.NOT_FOUND ||
+        error instanceof NotFoundException
+      ) {
         throw error;
       }
-      throw new NotFoundException(`Error al obtener el archivo: ${error?.message || 'Error desconocido'}`);
+      throw new NotFoundException(
+        `Error al obtener el archivo: ${error?.message || 'Error desconocido'}`,
+      );
     }
   }
 
@@ -402,22 +480,35 @@ export class FilesService implements OnModuleInit {
   async getFileStream(filename: string): Promise<NodeJS.ReadableStream> {
     try {
       const sanitizedFilename = this.sanitizeFilename(filename);
-      return await this.minioClient.getObject(this.bucketName, sanitizedFilename);
+      return await this.minioClient.getObject(
+        this.bucketName,
+        sanitizedFilename,
+      );
     } catch (error: any) {
-      if (error?.code === 'NotFound' || error?.status === HttpStatus.NOT_FOUND) {
+      if (
+        error?.code === 'NotFound' ||
+        error?.status === HttpStatus.NOT_FOUND
+      ) {
         throw new NotFoundException('Archivo no encontrado');
       }
-      throw new NotFoundException(`Error al obtener el archivo: ${error?.message || 'Error desconocido'}`);
+      throw new NotFoundException(
+        `Error al obtener el archivo: ${error?.message || 'Error desconocido'}`,
+      );
     }
   }
 
   /**
    * Genera un enlace prefirmado con expiración corta para realizar descargas seguras
    */
-  async generatePresignedUrl(filename: string, expirySeconds = 60): Promise<string> {
+  async generatePresignedUrl(
+    filename: string,
+    expirySeconds = 60,
+  ): Promise<string> {
     try {
       if (expirySeconds <= 0 || expirySeconds > 24 * 60 * 60) {
-        throw new BadRequestException('El tiempo de expiración debe estar entre 1 segundo y 24 horas');
+        throw new BadRequestException(
+          'El tiempo de expiración debe estar entre 1 segundo y 24 horas',
+        );
       }
 
       const sanitizedFilename = this.sanitizeFilename(filename);
@@ -433,7 +524,9 @@ export class FilesService implements OnModuleInit {
       if (error?.code === 'NotFound') {
         throw new NotFoundException('Archivo no encontrado');
       }
-      throw new NotFoundException(`Error al generar el enlace seguro: ${error?.message || 'Error desconocido'}`);
+      throw new NotFoundException(
+        `Error al generar el enlace seguro: ${error?.message || 'Error desconocido'}`,
+      );
     }
   }
 
@@ -449,9 +542,11 @@ export class FilesService implements OnModuleInit {
       '.gif': 'image/gif',
       '.pdf': 'application/pdf',
       '.doc': 'application/msword',
-      '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      '.docx':
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       '.xls': 'application/vnd.ms-excel',
-      '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      '.xlsx':
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       '.csv': 'text/csv',
       '.mp4': 'video/mp4',
       '.mov': 'video/quicktime',
@@ -466,25 +561,41 @@ export class FilesService implements OnModuleInit {
   /**
    * Procesa múltiples archivos XLS (HTML) de citas y los combina en una única plantilla XLSX
    */
-  async processMultipleAppointmentExcels(files: Express.Multer.File[]): Promise<{ buffer: Buffer; rowCount: number; fileCounts: number[] }> {
+  async processMultipleAppointmentExcels(
+    files: Express.Multer.File[],
+  ): Promise<{ buffer: Buffer; rowCount: number; fileCounts: number[] }> {
     const allAppointments: any[] = [];
     const fileCounts: number[] = [];
 
     for (const file of files) {
-      const appointmentsInThisFile = this.extractLegacyAppointmentsFromBuffer(file.buffer);
+      const appointmentsInThisFile = this.extractLegacyAppointmentsFromBuffer(
+        file.buffer,
+      );
       allAppointments.push(...appointmentsInThisFile);
       fileCounts.push(appointmentsInThisFile.length);
     }
 
     if (allAppointments.length === 0) {
-      throw new BadRequestException('No se encontraron citas en los archivos proporcionados');
+      throw new BadRequestException(
+        'No se encontraron citas en los archivos proporcionados',
+      );
     }
 
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('Citas Combinadas');
 
     const headers = [
-      'Fecha', 'Hora', 'Prestacion', 'Profesional', 'Tipo', 'Nombre', 'Telefono', 'Email', 'Indicaciones', 'Establecimiento', 'Nota'
+      'Fecha',
+      'Hora',
+      'Prestacion',
+      'Profesional',
+      'Tipo',
+      'Nombre',
+      'Telefono',
+      'Email',
+      'Indicaciones',
+      'Establecimiento',
+      'Nota',
     ];
     worksheet.addRow(headers);
     worksheet.getRow(1).font = { bold: true };
@@ -505,28 +616,36 @@ export class FilesService implements OnModuleInit {
       row.commit();
     });
 
-    worksheet.columns.forEach(column => { column.width = 20; });
+    worksheet.columns.forEach((column) => {
+      column.width = 20;
+    });
 
     const outputBuffer = Buffer.from(await workbook.xlsx.writeBuffer());
     return {
       buffer: outputBuffer,
       rowCount: allAppointments.length,
-      fileCounts: fileCounts
+      fileCounts: fileCounts,
     };
   }
 
   /**
    * Procesa un archivo XLS (HTML) de citas y completa la plantilla XLSX
    */
-  async processAppointmentExcel(buffer: Buffer): Promise<{ buffer: Buffer; rowCount: number }> {
+  async processAppointmentExcel(
+    buffer: Buffer,
+  ): Promise<{ buffer: Buffer; rowCount: number }> {
     const appointments = this.extractLegacyAppointmentsFromBuffer(buffer);
 
     if (appointments.length === 0) {
-      throw new BadRequestException('No se encontraron citas en el archivo proporcionado');
+      throw new BadRequestException(
+        'No se encontraron citas en el archivo proporcionado',
+      );
     }
 
     if (appointments.length === 0) {
-      throw new BadRequestException('No se encontraron citas en el archivo proporcionado');
+      throw new BadRequestException(
+        'No se encontraron citas en el archivo proporcionado',
+      );
     }
 
     // Crear un nuevo libro de Excel (limpio)
@@ -545,7 +664,7 @@ export class FilesService implements OnModuleInit {
       'Email',
       'Indicaciones',
       'Establecimiento',
-      'Nota'
+      'Nota',
     ];
     worksheet.addRow(headers);
     worksheet.getRow(1).font = { bold: true };
@@ -568,7 +687,7 @@ export class FilesService implements OnModuleInit {
     });
 
     // Ajustar ancho de columnas automáticamente
-    worksheet.columns.forEach(column => {
+    worksheet.columns.forEach((column) => {
       column.width = 20;
     });
 
@@ -576,7 +695,7 @@ export class FilesService implements OnModuleInit {
     const outputBuffer = Buffer.from(await workbook.xlsx.writeBuffer());
     return {
       buffer: outputBuffer,
-      rowCount: appointments.length
+      rowCount: appointments.length,
     };
   }
 
@@ -593,7 +712,8 @@ export class FilesService implements OnModuleInit {
     group_id?: string;
     tipo_reporte?: string;
   }) {
-    const { error } = await this.supabaseService.getAdminClient()
+    const { error } = await this.supabaseService
+      .getAdminClient()
       .from('informe_box_medico_procesados')
       .insert({
         nombre_original: data.nombre_original,
@@ -603,14 +723,15 @@ export class FilesService implements OnModuleInit {
         filas_procesadas: data.filas_procesadas,
         usuario_id: data.usuario_id,
         group_id: data.group_id,
-        tipo_reporte: data.tipo_reporte || 'citas_legacy'
+        tipo_reporte: data.tipo_reporte || 'citas_legacy',
       });
 
     if (error) {
-      throw new Error(`Error al guardar metadatos del reporte: ${error.message}`);
+      throw new Error(
+        `Error al guardar metadatos del reporte: ${error.message}`,
+      );
     }
   }
-
 
   /**
    * Extrae citas de un buffer de archivo XLS (HTML) legacy de Sismaule
@@ -630,10 +751,24 @@ export class FilesService implements OnModuleInit {
 
       // Identificamos la tabla principal por su estructura ("Recurso" o "Unidad") en lugar del nombre del establecimiento
       // Esto permite que funcione con cualquier centro (Hospital, CESFAM, CECOSF, Posta, etc.)
-      const isHeaderTable = rows.length >= 4 && (
-        rows.eq(3).find('td').first().text().trim().toLowerCase().includes('recurso') ||
-        rows.eq(2).find('td').first().text().trim().toLowerCase().includes('unidad')
-      );
+      const isHeaderTable =
+        rows.length >= 4 &&
+        (rows
+          .eq(3)
+          .find('td')
+          .first()
+          .text()
+          .trim()
+          .toLowerCase()
+          .includes('recurso') ||
+          rows
+            .eq(2)
+            .find('td')
+            .first()
+            .text()
+            .trim()
+            .toLowerCase()
+            .includes('unidad'));
 
       if (isHeaderTable) {
         currentEstablishment = rows.eq(0).find('td').first().text().trim();
@@ -658,14 +793,41 @@ export class FilesService implements OnModuleInit {
             }
 
             const [fecha, hora] = horaAten.split(' ');
-            const ficha = cells.eq(1 + offset).text().replace(/_+/g, ' ').trim();
-            const nombre = cells.eq(2 + offset).text().replace(/_+/g, ' ').trim();
-            const prestacionRaw = cells.eq(11 + offset).text().trim() || cells.eq(9 + offset).text().trim();
+            const ficha = cells
+              .eq(1 + offset)
+              .text()
+              .replace(/_+/g, ' ')
+              .trim();
+            const nombre = cells
+              .eq(2 + offset)
+              .text()
+              .replace(/_+/g, ' ')
+              .trim();
+            const prestacionRaw =
+              cells
+                .eq(11 + offset)
+                .text()
+                .trim() ||
+              cells
+                .eq(9 + offset)
+                .text()
+                .trim();
             const prestacion = prestacionRaw.replace(/_+/g, ' ').trim();
-            const celular = cells.eq(13 + offset).text().replace(/_+/g, ' ').trim();
-            const redFija = cells.eq(14 + offset).text().replace(/_+/g, ' ').trim();
+            const celular = cells
+              .eq(13 + offset)
+              .text()
+              .replace(/_+/g, ' ')
+              .trim();
+            const redFija = cells
+              .eq(14 + offset)
+              .text()
+              .replace(/_+/g, ' ')
+              .trim();
             const telefono = celular || redFija;
-            const extraData = cells.eq(12 + offset).text().trim();
+            const extraData = cells
+              .eq(12 + offset)
+              .text()
+              .trim();
             const rutMatch = extraData.match(/\d{1,2}\.\d{3}\.\d{3}-[\dkK]/);
             const rut = rutMatch ? rutMatch[0] : '';
 
@@ -678,7 +840,7 @@ export class FilesService implements OnModuleInit {
               nombre,
               telefono,
               establecimiento: currentEstablishment,
-              ficha: rut ? `${ficha} (RUT: ${rut})` : ficha
+              ficha: rut ? `${ficha} (RUT: ${rut})` : ficha,
             });
           }
         });
@@ -691,15 +853,22 @@ export class FilesService implements OnModuleInit {
   private hasSuspiciousDoubleExtension(filename: string): boolean {
     const sanitizedName = filename.toLowerCase().replace(/\s+/g, '');
 
-    if (this.blockedDoubleExtensions.some((ext) => sanitizedName.includes(`${ext}.`))) {
+    if (
+      this.blockedDoubleExtensions.some((ext) =>
+        sanitizedName.includes(`${ext}.`),
+      )
+    ) {
       return true;
     }
 
-    const allowedPattern = new RegExp(`\\.(${this.allowedExtensions
-      .map((ext) => ext.replace('.', ''))
-      .join('|')})\\.(${this.allowedExtensions.map((ext) => ext.replace('.', '')).join('|')})$`);
+    const allowedPattern = new RegExp(
+      `\\.(${this.allowedExtensions
+        .map((ext) => ext.replace('.', ''))
+        .join(
+          '|',
+        )})\\.(${this.allowedExtensions.map((ext) => ext.replace('.', '')).join('|')})$`,
+    );
 
     return allowedPattern.test(sanitizedName);
   }
 }
-

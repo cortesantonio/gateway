@@ -16,7 +16,9 @@ export class SupabaseAuthGuard implements CanActivate {
     const token = this.extractTokenFromHeader(request);
 
     if (!token) {
-      throw new UnauthorizedException('Token de autenticación no proporcionado');
+      throw new UnauthorizedException(
+        'Token de autenticación no proporcionado',
+      );
     }
 
     const user = await this.supabaseService.validateToken(token);
@@ -36,4 +38,3 @@ export class SupabaseAuthGuard implements CanActivate {
     return type === 'Bearer' ? token : undefined;
   }
 }
-

@@ -21,7 +21,7 @@ import { SupabaseAuthGuard } from '../auth/supabase-auth.guard';
 
 @Controller('files')
 export class FilesController {
-  constructor(private readonly filesService: FilesService) { }
+  constructor(private readonly filesService: FilesService) {}
 
   @Post('upload')
   @UseGuards(SupabaseAuthGuard)
@@ -30,7 +30,9 @@ export class FilesController {
       storage: memoryStorage(),
       fileFilter: (req, file, cb) => {
         // Validación básica en el interceptor
-        const ext = file.originalname.toLowerCase().match(/\.(jpg|jpeg|png|gif|pdf|doc|docx)$/);
+        const ext = file.originalname
+          .toLowerCase()
+          .match(/\.(jpg|jpeg|png|gif|pdf|doc|docx)$/);
         if (!ext) {
           return cb(
             new Error('Solo se permiten archivos de imagen y documentos'),
@@ -74,10 +76,14 @@ export class FilesController {
       storage: memoryStorage(),
       fileFilter: (req, file, cb) => {
         // Validación básica en el interceptor para boletas
-        const ext = file.originalname.toLowerCase().match(/\.(jpg|jpeg|png|pdf)$/);
+        const ext = file.originalname
+          .toLowerCase()
+          .match(/\.(jpg|jpeg|png|pdf)$/);
         if (!ext) {
           return cb(
-            new Error('Solo se permiten boletas en formato imagen (JPG, PNG) o PDF'),
+            new Error(
+              'Solo se permiten boletas en formato imagen (JPG, PNG) o PDF',
+            ),
             false,
           );
         }
@@ -135,7 +141,11 @@ export class FilesController {
   async uploadOficio(@UploadedFile() file: Express.Multer.File) {
     this.filesService.validateOficio(file);
     const filename = this.filesService.generateFileName(file.originalname);
-    const uploadedFilename = await this.filesService.uploadFile(file, filename, 'oficios');
+    const uploadedFilename = await this.filesService.uploadFile(
+      file,
+      filename,
+      'oficios',
+    );
     return {
       success: true,
       message: 'Oficio subido exitosamente',
@@ -158,7 +168,9 @@ export class FilesController {
         const ext = file.originalname.toLowerCase().match(/\.(xls|xlsx|csv)$/);
         if (!ext) {
           return cb(
-            new Error('Solo se permiten archivos Excel (.xls, .xlsx) o CSV (.csv) para citas'),
+            new Error(
+              'Solo se permiten archivos Excel (.xls, .xlsx) o CSV (.csv) para citas',
+            ),
             false,
           );
         }
@@ -172,7 +184,11 @@ export class FilesController {
   async uploadCitas(@UploadedFile() file: Express.Multer.File) {
     this.filesService.validateCitas(file);
     const filename = this.filesService.generateFileName(file.originalname);
-    const uploadedFilename = await this.filesService.uploadFile(file, filename, 'citas');
+    const uploadedFilename = await this.filesService.uploadFile(
+      file,
+      filename,
+      'citas',
+    );
     return {
       success: true,
       message: 'Archivo de citas subido exitosamente',
@@ -186,7 +202,6 @@ export class FilesController {
     };
   }
 
-
   @Post('credenciales')
   @UseGuards(SupabaseAuthGuard)
   @UseInterceptors(
@@ -199,7 +214,11 @@ export class FilesController {
   )
   async uploadCredenciales(@UploadedFile() file: Express.Multer.File) {
     const filename = this.filesService.generateFileName(file.originalname);
-    const uploadedFilename = await this.filesService.uploadFile(file, filename, 'credenciales');
+    const uploadedFilename = await this.filesService.uploadFile(
+      file,
+      filename,
+      'credenciales',
+    );
     return {
       success: true,
       message: 'Archivo de credenciales subido exitosamente',
@@ -213,9 +232,6 @@ export class FilesController {
     };
   }
 
-
-
-
   @Post('funcionarios')
   @UseGuards(SupabaseAuthGuard)
   @UseInterceptors(
@@ -225,7 +241,9 @@ export class FilesController {
         const ext = file.originalname.toLowerCase().match(/\.(xls|xlsx|csv)$/);
         if (!ext) {
           return cb(
-            new Error('Solo se permiten archivos Excel (.xls, .xlsx) o CSV (.csv) para funcionarios'),
+            new Error(
+              'Solo se permiten archivos Excel (.xls, .xlsx) o CSV (.csv) para funcionarios',
+            ),
             false,
           );
         }
@@ -239,7 +257,11 @@ export class FilesController {
   async uploadFuncionarios(@UploadedFile() file: Express.Multer.File) {
     this.filesService.validateFuncionarios(file);
     const filename = this.filesService.generateFileName(file.originalname);
-    const uploadedFilename = await this.filesService.uploadFile(file, filename, 'funcionarios');
+    const uploadedFilename = await this.filesService.uploadFile(
+      file,
+      filename,
+      'funcionarios',
+    );
     return {
       success: true,
       message: 'Archivo de funcionarios subido exitosamente',
@@ -277,7 +299,9 @@ export class FilesController {
     @Query('groupId') groupId?: string,
   ) {
     if (!files || files.length === 0) {
-      throw new BadRequestException('No se han proporcionado archivos en el campo "files"');
+      throw new BadRequestException(
+        'No se han proporcionado archivos en el campo "files"',
+      );
     }
 
     const user = req.user;
@@ -286,23 +310,35 @@ export class FilesController {
     }
 
     // 1. Procesar todos los archivos juntos para obtener el buffer combinado y los conteos individuales
-    const { buffer: processedBuffer, rowCount, fileCounts } = await this.filesService.processMultipleAppointmentExcels(files);
+    const {
+      buffer: processedBuffer,
+      rowCount,
+      fileCounts,
+    } = await this.filesService.processMultipleAppointmentExcels(files);
 
     // 2. Guardar el archivo PROCESADO (combinado) en MinIO una sola vez
     const firstFileOriginalName = files[0].originalname;
-    const baseName = firstFileOriginalName.substring(0, firstFileOriginalName.lastIndexOf('.')) || firstFileOriginalName;
-    const downloadName = files.length > 1 ? `${baseName}_combinado.xlsx` : `${baseName}_procesado.xlsx`;
+    const baseName =
+      firstFileOriginalName.substring(
+        0,
+        firstFileOriginalName.lastIndexOf('.'),
+      ) || firstFileOriginalName;
+    const downloadName =
+      files.length > 1
+        ? `${baseName}_combinado.xlsx`
+        : `${baseName}_procesado.xlsx`;
     const systemFilename = this.filesService.generateFileName(downloadName);
 
     const storagePath = await this.filesService.uploadFile(
       {
         buffer: processedBuffer,
         size: processedBuffer.length,
-        mimetype: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        mimetype:
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         originalname: downloadName,
       } as any,
       systemFilename,
-      'informes_procesados'
+      'informes_procesados',
     );
 
     // 3. Registrar metadatos para cada archivo ORIGINAL, pero apuntando al resultado procesado
@@ -312,7 +348,7 @@ export class FilesController {
       await this.filesService.saveReportMetadata({
         nombre_original: downloadName, // Reemplazamos el nombre original por el nombre del resultado
         nombre_sistema: systemFilename,
-        tamaño: processedBuffer.length, 
+        tamaño: processedBuffer.length,
         url_path: storagePath,
         filas_procesadas: fileCounts[i] || 0,
         usuario_id: user.id,
@@ -323,20 +359,21 @@ export class FilesController {
     // 3. Preparar resumen para el frontend (usando el nombre del resultado para ocultar el original)
     const summary = files.map((f, i) => ({
       name: downloadName,
-      count: fileCounts[i] || 0
+      count: fileCounts[i] || 0,
     }));
 
     res.set({
-      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Type':
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       'Content-Disposition': `attachment; filename="${downloadName}"`,
       'Content-Length': processedBuffer.length.toString(),
       'X-Processed-Summary': JSON.stringify(summary),
-      'Access-Control-Expose-Headers': 'X-Processed-Summary, Content-Disposition'
+      'Access-Control-Expose-Headers':
+        'X-Processed-Summary, Content-Disposition',
     });
 
     res.send(processedBuffer);
   }
-
 
   @Post('tickets')
   @UseGuards(SupabaseAuthGuard)
@@ -366,7 +403,11 @@ export class FilesController {
       const filename = this.filesService.generateFileName(file.originalname);
 
       // Subir archivo a MinIO en la carpeta 'tickets'
-      const uploadedFilename = await this.filesService.uploadFile(file, filename, 'tickets');
+      const uploadedFilename = await this.filesService.uploadFile(
+        file,
+        filename,
+        'tickets',
+      );
 
       uploadResults.push({
         filename: uploadedFilename,

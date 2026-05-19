@@ -7,4 +7,3 @@ import { SupabaseAuthGuard } from './supabase-auth.guard';
   exports: [SupabaseService, SupabaseAuthGuard],
 })
 export class AuthModule {}
-

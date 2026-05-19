@@ -24,9 +24,10 @@ export interface ScraperResult {
 @Injectable()
 export class MercadoPublicoScraperService {
   private readonly logger = new Logger(MercadoPublicoScraperService.name);
-  private readonly searchUrl = 'https://www.mercadopublico.cl/BuscarLicitacion/Home/Buscar';
+  private readonly searchUrl =
+    'https://www.mercadopublico.cl/BuscarLicitacion/Home/Buscar';
 
-  constructor(private readonly httpService: HttpService) { }
+  constructor(private readonly httpService: HttpService) {}
 
   async searchAll(query: string) {
     let allResults: ScraperResult[] = [];
@@ -66,9 +67,9 @@ export class MercadoPublicoScraperService {
           this.httpService.post(this.searchUrl, payload, {
             headers: {
               'Content-Type': 'application/json',
-              'Accept': '*/*',
+              Accept: '*/*',
             },
-          })
+          }),
         );
 
         const html = response.data;
@@ -85,7 +86,11 @@ export class MercadoPublicoScraperService {
         allResults = [...allResults, ...pageResults];
 
         // Verificar si hay más páginas
-        if (allResults.length >= totalResults || pageResults.length === 0 || currentPage > 50) {
+        if (
+          allResults.length >= totalResults ||
+          pageResults.length === 0 ||
+          currentPage > 50
+        ) {
           break;
         }
 
@@ -109,12 +114,16 @@ export class MercadoPublicoScraperService {
 
     try {
       const response = await firstValueFrom(
-        this.httpService.post(webhookUrl, { id }, {
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': '*/*',
+        this.httpService.post(
+          webhookUrl,
+          { id },
+          {
+            headers: {
+              'Content-Type': 'application/json',
+              Accept: '*/*',
+            },
           },
-        })
+        ),
       );
       return response.data;
     } catch (error) {
@@ -129,15 +138,21 @@ export class MercadoPublicoScraperService {
     $('.lic-bloq-wrap').each((index, element) => {
       const row = $(element);
 
-      const idLicitacion = row.find('.id-licitacion span.clearfix').text().trim();
+      const idLicitacion = row
+        .find('.id-licitacion span.clearfix')
+        .text()
+        .trim();
       const estado = row.find('.estado-texto').text().trim();
       const titulo = row.find('h2.text-weight-light').text().trim();
       const descripcion = row.find('p.text-weight-light').first().text().trim();
 
       // Montos y Fechas
       const montoLabel = row.find('.monto-dis strong').text().trim();
-      let montoValor = row.find('.monto-dis .campo-numerico-punto-coma').text().trim();
-      
+      let montoValor = row
+        .find('.monto-dis .campo-numerico-punto-coma')
+        .text()
+        .trim();
+
       // Si no hay monto numérico, podría ser un intervalo (monto-no-publico)
       if (!montoValor) {
         montoValor = row.find('.monto-dis .monto-no-publico').text().trim();
@@ -162,8 +177,16 @@ export class MercadoPublicoScraperService {
       const fechaCierre = getLabelValue('Fecha de cierre');
 
       // Comprador
-      const compradorPrincipal = row.find('.lic-bloq-footer strong').first().text().trim();
-      const organismoDetalle = row.find('.lic-bloq-footer p').first().text().trim();
+      const compradorPrincipal = row
+        .find('.lic-bloq-footer strong')
+        .first()
+        .text()
+        .trim();
+      const organismoDetalle = row
+        .find('.lic-bloq-footer p')
+        .first()
+        .text()
+        .trim();
 
       // URL Ficha (extraída del onclick)
       const onclickAttr = row.find('a[onclick*="verFicha"]').attr('onclick');
@@ -180,15 +203,15 @@ export class MercadoPublicoScraperService {
         descripcion,
         monto: {
           tipo: montoLabel,
-          valor: montoValor
+          valor: montoValor,
         },
         fechaPublicacion,
         fechaCierre,
         comprador: {
           principal: compradorPrincipal,
-          organismo: organismoDetalle
+          organismo: organismoDetalle,
         },
-        urlFicha
+        urlFicha,
       });
     });
 

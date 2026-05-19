@@ -8,16 +8,15 @@ import { MailModule } from '../mail/mail.module';
 import { AuthModule } from '../auth/auth.module';
 
 @Module({
-    imports: [
-        BullModule.registerQueue({
-            name: 'mass-mail-queue',
-        }),
-        MailModule,
-        AuthModule,
-    ],
-    controllers: [MassMailController],
-    providers: [MassMailService, MassMailProcessor, BounceCheckerService],
-    exports: [MassMailService],
+  imports: [
+    BullModule.registerQueue({
+      name: 'mass-mail-queue',
+    }),
+    MailModule,
+    AuthModule,
+  ],
+  controllers: [MassMailController],
+  providers: [MassMailService, MassMailProcessor, BounceCheckerService],
+  exports: [MassMailService],
 })
-export class MassMailModule { }
-
+export class MassMailModule {}

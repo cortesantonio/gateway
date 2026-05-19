@@ -11,9 +11,7 @@ export class MonitoringService {
   private cachedData: any[] | null = null;
   private cacheTimestamp: number = 0;
 
-  constructor(
-    private readonly supabaseService: SupabaseService,
-  ) {}
+  constructor(private readonly supabaseService: SupabaseService) {}
 
   /**
    * Devuelve datos planos de notificacion_cita.
@@ -23,9 +21,11 @@ export class MonitoringService {
   async getFlatAppointments(): Promise<{ data: any[]; cachedAt: string }> {
     const now = Date.now();
 
-    if (this.cachedData && (now - this.cacheTimestamp) < CACHE_TTL_MS) {
+    if (this.cachedData && now - this.cacheTimestamp < CACHE_TTL_MS) {
       const ageMin = Math.round((now - this.cacheTimestamp) / 60000);
-      this.logger.log(`Retornando datos desde caché (antigüedad: ${ageMin} min)`);
+      this.logger.log(
+        `Retornando datos desde caché (antigüedad: ${ageMin} min)`,
+      );
       return {
         data: this.cachedData,
         cachedAt: new Date(this.cacheTimestamp).toISOString(),
@@ -69,7 +69,9 @@ export class MonitoringService {
 
         const { data, error } = await supabase
           .from('notificacion_cita')
-          .select('establecimiento, estado_envio, estado_confirmacion, created_at, fecha_envio, fecha_confirmacion, nombre_paciente, fecha_cita, hora_cita, link_opened_at, tipo_atencion')
+          .select(
+            'establecimiento, estado_envio, estado_confirmacion, created_at, fecha_envio, fecha_confirmacion, nombre_paciente, fecha_cita, hora_cita, link_opened_at, tipo_atencion',
+          )
           .eq('activo', true)
           .range(startRange, endRange);
 
@@ -90,7 +92,9 @@ export class MonitoringService {
       this.cachedData = allAppointments;
       this.cacheTimestamp = Date.now();
 
-      this.logger.log(`Datos actualizados y cacheados. Total: ${allAppointments.length} registros (TTL: 30 min)`);
+      this.logger.log(
+        `Datos actualizados y cacheados. Total: ${allAppointments.length} registros (TTL: 30 min)`,
+      );
       return allAppointments;
     } catch (error) {
       this.logger.error('Error obteniendo datos planos:', error);

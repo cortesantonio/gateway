@@ -15,41 +15,41 @@ import { MonitoringModule } from './monitoring/monitoring.module';
 import { MassMailModule } from './mass-mail/mass-mail.module';
 
 @Module({
-    imports: [
-        ConfigModule.forRoot({
-            isGlobal: true,
-            envFilePath: '.env',
-        }),
-        BullModule.forRoot({
-            connection: {
-                host: process.env.REDIS_HOST || 'localhost',
-                port: parseInt(process.env.REDIS_PORT || '6379'),
-                password: process.env.REDIS_PASSWORD || undefined,
-            },
-        }),
-        MailModule,
-        SmsModule,
-        FilesModule,
-        AuthModule,
-        UsersModule,
-        MassMailModule,
-        MercadoPublicoModule,
-        MercadoPublicoScraperModule,
-        MonitoringModule,
-        ScheduleModule.forRoot(),
-        ThrottlerModule.forRoot([
-            {
-                ttl: 60000, // 1 minuto
-                limit: 100, // 100 requests por minuto
-            },
-        ]),
-    ],
-    controllers: [],
-    providers: [
-        {
-            provide: APP_GUARD,
-            useClass: ThrottlerGuard,
-        },
-    ],
+  imports: [
+    ConfigModule.forRoot({
+      isGlobal: true,
+      envFilePath: '.env',
+    }),
+    BullModule.forRoot({
+      connection: {
+        host: process.env.REDIS_HOST || 'localhost',
+        port: parseInt(process.env.REDIS_PORT || '6379'),
+        password: process.env.REDIS_PASSWORD || undefined,
+      },
+    }),
+    MailModule,
+    SmsModule,
+    FilesModule,
+    AuthModule,
+    UsersModule,
+    MassMailModule,
+    MercadoPublicoModule,
+    MercadoPublicoScraperModule,
+    MonitoringModule,
+    ScheduleModule.forRoot(),
+    ThrottlerModule.forRoot([
+      {
+        ttl: 60000, // 1 minuto
+        limit: 100, // 100 requests por minuto
+      },
+    ]),
+  ],
+  controllers: [],
+  providers: [
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
+  ],
 })
-export class AppModule { }
+export class AppModule {}

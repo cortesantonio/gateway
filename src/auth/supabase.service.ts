@@ -24,7 +24,7 @@ export class SupabaseService {
         auth: {
           autoRefreshToken: false,
           persistSession: false,
-        }
+        },
       });
     }
   }
@@ -74,4 +74,3 @@ export class SupabaseService {
     return this.adminSupabase;
   }
 }
-

@@ -3,68 +3,85 @@ import * as nodemailer from 'nodemailer';
 
 @Injectable()
 export class MailService {
-    private transporter: nodemailer.Transporter;
-    private readonly logger = new Logger(MailService.name);
+  private transporter: nodemailer.Transporter;
+  private readonly logger = new Logger(MailService.name);
 
-    constructor() {
-        this.transporter = nodemailer.createTransport({
-            host: process.env.MAIL_HOST,
-            port: 465,
-            secure: true, // OBLIGATORIO
-            auth: {
-                user: process.env.MAIL_USER,
-                pass: process.env.MAIL_PASSWORD,
-            },
-            tls: {
-                rejectUnauthorized: false,
-            },
-        });
+  constructor() {
+    this.transporter = nodemailer.createTransport({
+      host: process.env.MAIL_HOST,
+      port: 465,
+      secure: true, // OBLIGATORIO
+      auth: {
+        user: process.env.MAIL_USER,
+        pass: process.env.MAIL_PASSWORD,
+      },
+      tls: {
+        rejectUnauthorized: false,
+      },
+    });
 
-        this.verifyConnection();
+    this.verifyConnection();
+  }
+
+  async verifyConnection() {
+    try {
+      await this.transporter.verify();
+      this.logger.log('Mail server connection established successfully');
+    } catch (error) {
+      this.logger.error('Error connecting to mail server', error);
     }
+  }
 
-    async verifyConnection() {
-        try {
-            await this.transporter.verify();
-            this.logger.log('Mail server connection established successfully');
-        } catch (error) {
-            this.logger.error('Error connecting to mail server', error);
-        }
+  async sendMail(
+    to: string,
+    subject: string,
+    html: string,
+    text?: string,
+    bcc?: string,
+    attachments?: any[],
+  ) {
+    try {
+      const path = require('path');
+      const logoPath = path.join(process.cwd(), 'src', 'img', 'logo-muni.jpg');
+      // Adjuntos por defecto (Logo)
+      const defaultAttachments = [
+        {
+          filename: 'logo-muni.jpg',
+          path: logoPath,
+          cid: 'logo-muni',
+        },
+      ];
+      // Combinar adjuntos del usuario con los por defecto
+      const finalAttachments = attachments
+        ? [...defaultAttachments, ...attachments]
+        : defaultAttachments;
+      const info = await this.transporter.sendMail({
+        from: process.env.MAIL_FROM || process.env.MAIL_USER,
+        to,
+        bcc,
+        subject,
+        html,
+        text: text || html.replace(/<[^>]*>?/gm, ''),
+        attachments: finalAttachments, // <--- Usamos la lista combinada
+      });
+      this.logger.log(`Email sent: ${info.messageId}`);
+      return info;
+    } catch (error) {
+      this.logger.error(`Error sending email to ${to}`, error);
+      throw error;
     }
+  }
 
-    async sendMail(to: string, subject: string, html: string, text?: string, bcc?: string, attachments?: any[]) {
-        try {
-            const path = require('path');
-            const logoPath = path.join(process.cwd(), 'src', 'img', 'logo-muni.jpg');
-            // Adjuntos por defecto (Logo)
-            const defaultAttachments = [
-                {
-                    filename: 'logo-muni.jpg',
-                    path: logoPath,
-                    cid: 'logo-muni'
-                }
-            ];
-            // Combinar adjuntos del usuario con los por defecto
-            const finalAttachments = attachments ? [...defaultAttachments, ...attachments] : defaultAttachments;
-            const info = await this.transporter.sendMail({
-                from: process.env.MAIL_FROM || process.env.MAIL_USER,
-                to,
-                bcc,
-                subject,
-                html,
-                text: text || html.replace(/<[^>]*>?/gm, ''),
-                attachments: finalAttachments // <--- Usamos la lista combinada
-            });
-            this.logger.log(`Email sent: ${info.messageId}`);
-            return info;
-        } catch (error) {
-            this.logger.error(`Error sending email to ${to}`, error);
-            throw error;
-        }
-    }
-
-    getBasicTemplate(title: string, subtitle: string, message: string, actionUrl?: string, actionText?: string, detailsHtml?: string, actionInstruction?: string): string {
-        return `
+  getBasicTemplate(
+    title: string,
+    subtitle: string,
+    message: string,
+    actionUrl?: string,
+    actionText?: string,
+    detailsHtml?: string,
+    actionInstruction?: string,
+  ): string {
+    return `
 <!DOCTYPE html>
 <html lang="es">
 
@@ -102,18 +119,26 @@ export class MailService {
 
                     ${detailsHtml ? detailsHtml : ''}
 
-                    ${actionInstruction ? `<p style="font-size: 14px; color: #555555; margin-top: 20px; margin-bottom: 15px;">
+                    ${
+                      actionInstruction
+                        ? `<p style="font-size: 14px; color: #555555; margin-top: 20px; margin-bottom: 15px;">
                         ${actionInstruction}
-                    </p>` : ''}
+                    </p>`
+                        : ''
+                    }
 
-                    ${actionUrl && actionText ? `<table border="0" cellpadding="0" cellspacing="0" width="100%">
+                    ${
+                      actionUrl && actionText
+                        ? `<table border="0" cellpadding="0" cellspacing="0" width="100%">
                         <tr>
                             <td>
                                 <a href="${actionUrl}"
                                     style="background-color: #219542; color: #ffffff; padding: 12px 30px; text-decoration: none; border-radius: 30px; font-weight: bold; font-size: 12px; letter-spacing: 1px; display: inline-block;">${actionText}</a>
                             </td>
                         </tr>
-                    </table>` : ''}
+                    </table>`
+                        : ''
+                    }
                 </td>
             </tr>
         </table>
@@ -136,5 +161,5 @@ export class MailService {
 
 </html>
         `;
-    }
+  }
 }
