@@ -30,35 +30,39 @@ export class CompraAgilController {
   }
 
   /**
+   * Busca Compras Ágiles en la API externa del Buscador de Mercado Público.
+   */
+  @Get('buscador-external')
+  async searchBuscadorExternal(
+    @Query('date_from') dateFrom?: string,
+    @Query('date_to') dateTo?: string,
+    @Query('keywords') keywords?: string,
+    @Query('status') status?: string,
+  ) {
+    return this.compraAgilService.searchBuscadorExternal({
+      date_from: dateFrom,
+      date_to: dateTo,
+      keywords,
+      status,
+    });
+  }
+
+  /**
    * Sincroniza o importa una Compra Ágil específica por su código. Guarda/actualiza en la BD local.
    */
   @Post('sync/:codigo')
   @HttpCode(HttpStatus.OK)
-  async syncByCode(@Param('codigo') codigo: string, @Req() req: any) {
-    const actorId = req.user?.id; // Extraído por SupabaseAuthGuard
-    return this.compraAgilService.syncByCode(codigo, actorId, 'manual');
-  }
-
-  /**
-   * Fuerza una sincronización incremental de Compras Ágiles.
-   * Útil para probar el flujo de actualización o sincronizar manualmente ventanas de tiempo.
-   */
-  @Post('sync-incremental')
-  @HttpCode(HttpStatus.OK)
-  async syncIncremental(
-    @Query('ttl_cambio_ms') ttl?: string,
-    @Query('cambio_desde') desde?: string,
-    @Query('cambio_hasta') hasta?: string,
-    @Query('estado') estado?: string,
-    @Query('region') region?: string,
+  async syncByCode(
+    @Param('codigo') codigo: string,
+    @Query('group_id') groupId: string,
+    @Req() req: any,
   ) {
-    const ttlMs = ttl ? parseInt(ttl, 10) : undefined;
-    return this.compraAgilService.syncIncremental({
-      ttl_cambio_ms: ttlMs,
-      cambio_desde: desde,
-      cambio_hasta: hasta,
-      estado,
-      region,
-    });
+    const actorId = req.user?.id; // Extraído por SupabaseAuthGuard
+    return this.compraAgilService.syncByCode(
+      codigo,
+      actorId,
+      'manual',
+      groupId,
+    );
   }
 }

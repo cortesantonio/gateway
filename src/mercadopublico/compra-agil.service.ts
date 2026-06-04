@@ -13,7 +13,7 @@ import {
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
-import { Cron, CronExpression } from '@nestjs/schedule';
+
 import type { Cache } from 'cache-manager';
 import { firstValueFrom } from 'rxjs';
 import { SupabaseService } from '../auth/supabase.service';
@@ -109,92 +109,6 @@ export class CompraAgilService {
   }
 
   /**
-   * Performs an incremental sync of Compras Ágiles modified in a specific window
-   */
-  async syncIncremental(
-    params: {
-      ttl_cambio_ms?: number;
-      cambio_desde?: string;
-      cambio_hasta?: string;
-      estado?: string;
-      region?: string;
-    } = {},
-  ) {
-    this.logger.log(
-      `Starting incremental sync with parameters: ${JSON.stringify(params)}`,
-    );
-
-    const apiParams: Record<string, any> = {
-      tamano_pagina: 50,
-      numero_pagina: 1,
-      ordenar_por: 'FechaUltimaModificacion',
-    };
-
-    if (params.ttl_cambio_ms) {
-      apiParams.ttl_cambio_ms = params.ttl_cambio_ms;
-    } else if (params.cambio_desde) {
-      apiParams.cambio_desde = params.cambio_desde;
-      if (params.cambio_hasta) apiParams.cambio_hasta = params.cambio_hasta;
-    } else {
-      // Por defecto sincronizar los cambios de las últimas 24 horas (86400000 ms)
-      apiParams.ttl_cambio_ms = 86400000;
-    }
-
-    if (params.estado) apiParams.estado = params.estado;
-    if (params.region) apiParams.region = params.region;
-
-    let totalSincronizadas = 0;
-    const errors: any[] = [];
-
-    try {
-      while (true) {
-        const payload = await this.callApi<any>('', apiParams);
-        if (
-          !payload ||
-          !payload.items ||
-          !Array.isArray(payload.items) ||
-          payload.items.length === 0
-        ) {
-          break;
-        }
-
-        this.logger.log(
-          `Syncing page ${apiParams.numero_pagina} with ${payload.items.length} items`,
-        );
-
-        for (const item of payload.items) {
-          try {
-            await this.syncByCode(item.codigo, undefined, 'automatico');
-            totalSincronizadas++;
-          } catch (err) {
-            this.logger.error(
-              `Failed to sync item ${item.codigo}: ${err.message}`,
-            );
-            errors.push({ codigo: item.codigo, error: err.message });
-          }
-        }
-
-        const paginacion = payload.paginacion;
-        if (
-          !paginacion ||
-          paginacion.numero_pagina >= paginacion.total_paginas
-        ) {
-          break;
-        }
-        apiParams.numero_pagina++;
-      }
-
-      this.logger.log(
-        `Incremental sync completed. Successfully synced: ${totalSincronizadas}`,
-      );
-      return { success: true, synced_count: totalSincronizadas, errors };
-    } catch (error) {
-      this.logger.error(`Error during incremental sync: ${error.message}`);
-      throw error;
-    }
-  }
-
-  /**
    * Main orchestrator of the syncing process for a single Compra Ágil code.
    * Feches, normalizes, persists, links OCs and logs audit events.
    */
@@ -202,6 +116,7 @@ export class CompraAgilService {
     codigo: string,
     actorId?: string,
     origen: string = 'manual',
+    groupId?: string,
   ) {
     this.logger.log(
       `Syncing Compra Ágil ${codigo} (Actor: ${actorId || 'system'}, Origen: ${origen})`,
@@ -270,6 +185,11 @@ export class CompraAgilService {
     if (!existing) {
       // Default internal state is 'pendiente_revision'
       normalized.estado_interno = 'pendiente_revision';
+      if (groupId) {
+        normalized.group_id =
+          typeof groupId === 'string' ? parseInt(groupId, 10) : groupId;
+      }
+      if (actorId) normalized.creado_por = actorId;
 
       const { data: inserted, error: insertError } = await adminDb
         .from('compras_agiles')
@@ -311,6 +231,16 @@ export class CompraAgilService {
     } else {
       // Preserve local state fields we do not overwrite from API
       normalized.estado_interno = existing.estado_interno;
+
+      // If it doesn't have a group, associate it with the importing group
+      if (!existing.group_id && groupId) {
+        normalized.group_id =
+          typeof groupId === 'string' ? parseInt(groupId, 10) : groupId;
+      } else {
+        normalized.group_id = existing.group_id;
+      }
+
+      normalized.creado_por = existing.creado_por || actorId || null;
       if (existing.responsable_id)
         normalized.responsable_id = existing.responsable_id;
       if (existing.licitacion_id)
@@ -339,6 +269,30 @@ export class CompraAgilService {
           `Error al actualizar Compra Ágil: ${updateError.message}`,
           HttpStatus.INTERNAL_SERVER_ERROR,
         );
+      }
+
+      // Si la compra ágil ya existe en otro grupo, la compartimos con el nuevo grupo importador
+      if (
+        groupId &&
+        existing.group_id &&
+        existing.group_id.toString() !== groupId.toString()
+      ) {
+        const { error: shareError } = await adminDb
+          .from('compra_agil_compartida')
+          .upsert(
+            {
+              compra_agil_id: existing.id,
+              group_id:
+                typeof groupId === 'string' ? parseInt(groupId, 10) : groupId,
+              permiso: 'ver',
+            },
+            { onConflict: 'compra_agil_id,group_id' },
+          );
+        if (shareError) {
+          this.logger.error(
+            `Error al compartir compra ágil al sincronizar: ${shareError.message}`,
+          );
+        }
       }
       savedRecord = updated;
 
@@ -412,7 +366,7 @@ export class CompraAgilService {
     ) {
       const isWinnerState = (estado: any): boolean => {
         if (estado === undefined || estado === null) return false;
-        
+
         // If it is a primitive type (string, number, etc.)
         if (typeof estado !== 'object') {
           const upper = String(estado).toUpperCase();
@@ -426,7 +380,7 @@ export class CompraAgilService {
             upper === '1'
           );
         }
-        
+
         // If it is an object
         const glosa = estado.glosa ? String(estado.glosa).toUpperCase() : '';
         const codigo = estado.codigo ? String(estado.codigo).toUpperCase() : '';
@@ -530,24 +484,83 @@ export class CompraAgilService {
   }
 
   /**
-   * Scheduled cron job running every hour to execute automatic incremental synchronization
+   * Busca Compras Ágiles en la API externa del Buscador de Mercado Público recorriendo todas las páginas.
    */
-  @Cron(CronExpression.EVERY_HOUR)
-  async handleSyncCron() {
-    this.logger.log(
-      'CRON: Iniciando sincronización automática programada de Compras Ágiles...',
-    );
+  async searchBuscadorExternal(params: {
+    date_from?: string;
+    date_to?: string;
+    keywords?: string;
+    status?: string;
+  }) {
+    const apiParams: Record<string, any> = {
+      order_by: 'recent',
+      page_number: 1,
+    };
+
+    if (params.date_from) apiParams.date_from = params.date_from;
+    if (params.date_to) apiParams.date_to = params.date_to;
+    if (params.keywords) apiParams.keywords = params.keywords;
+    if (params.status) apiParams.status = params.status;
+
+    const apiKey =
+      this.configService.get<string>('MERCADO_PUBLICO_BUSCADOR_API_KEY') ||
+      'e93089e4-437c-4723-b343-4fa20045e3bc';
+    const token =
+      this.configService.get<string>('MERCADO_PUBLICO_BUSCADOR_TOKEN') ||
+      'eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkIiA6ICI2Rk1NaXFwVWRLY3Ryb0IweXgwRWdKWS1xVDZIVDBEQXgyR3JvWFlja25JIn0.eyJleHAiOjE3ODA2MDQ0OTAsImlhdCI6MTc4MDU3NTY5MCwianRpIjoiYWRlN2QyN2ItMTFhMy00OGFlLWIyNTYtOGU3YjZhY2RiOTRlIiwiaXNzIjoiaHR0cHM6Ly9oZWltZGFsbC5tZXJjYWRvcHVibGljby5jbC9hdXRoL3JlYWxtcy9jaGlsZWNvbXByYXJlYWxtIiwiYXVkIjoiYWNjb3VudCIsInN1YiI6Ijk3NGRiNzU3LTc2NjEtNDdjMC04MDlhLTlkZTExZGZkYzQ0NiIsInR5cCI6IkJlYXJlciIsImF6pCI6Im1lcmNhZG9QdWJsaWNvQ2xpZW50Iiwic2lkIjoiZWVjMzlkY2EtZWQ2Ni00ZGJjLWFlNzAtMzcxZTYwOTlmNWIxIiwiYWxsb3dlZC1vcmlnaW5zIjpbIioiXSwicmVhbG1fYWNjZXNzIjp7InJvbGVzIjpbIm9mZmxpbmVfYWNjZXNzIiwidW1hX2F1dGhvcml6YXRpb24iLCJwdWJsaWNvIl19LCJyZXNvdXJjZV9hY2Nlc3MiOnsiYWNjb3VudCI6eyJyb2xlcyI6WyJtYW5hZ2UtYWNjb3VudCIsIm1hbmFnZS1hY2NvdW50LWxpbmtzIiwidmlldy1wcm9maWxlIl19fSwic2NvcGUiOiJvcGVuaWQgZW1haWwgcHJvZmlsZSIsImVtYWlsX3ZlcmlmaWVkIjpmYWxzZSwicHJlZmVycmVkX3VzZXJuYW1lIjoiYW5vbmltb3VzZXIifQ.NaoSYuSbY7fmwu-_NaGxZjQZw9KYcewWbwwmNcVz_atFMw50CgfOvXjhuQspgq8mOIgkaKzwNlQ8BA-RL2oY6GWBcU3Hoa2J3-mueNYKsVptNtAgjS_qRQKaFbEpIzfmJXm5BnSOQu9XQK7g_S9YtVxuJVQ77oeQ5F31vqeh8mnCm3fFSkz9COyYtJiXI61noLsCzd0VdgKCU-KZDHiMTwRpw0KuRGNb3DFjZrWD6nbXSLPyrcLaYw91aPSo-_IW10ZgHvVzeMm5rYMvZNTP10sciB5Mn0gglxwBG1n_iNk3VDTzav6t-MVyePp1p0wU5ssd3JwAr-iS-vUKW_8u9A';
+
+    const headers = {
+      accept: 'application/json, text/plain, */*',
+      'accept-language': 'es-ES,es;q=0.5',
+      authorization: `Bearer ${token}`,
+      origin: 'https://buscador.mercadopublico.cl',
+      referer: 'https://buscador.mercadopublico.cl/',
+      'x-api-key': apiKey,
+      'user-agent':
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36',
+    };
+
+    const url = 'https://api.buscador.mercadopublico.cl/compra-agil';
+    let allResultados: any[] = [];
+    let page = 1;
+    let pageCount = 1;
+
     try {
-      // Sincronizar cambios de las últimas 2 horas para tener holgura
-      const result = await this.syncIncremental({
-        ttl_cambio_ms: 2 * 60 * 60 * 1000,
-      });
-      this.logger.log(
-        `CRON: Sincronización automática finalizada. Sincronizadas: ${result.synced_count}`,
-      );
+      do {
+        apiParams.page_number = page;
+        this.logger.log(
+          `Fetching buscador page ${page} of ${pageCount} for keywords: ${params.keywords}`,
+        );
+        const response = await firstValueFrom(
+          this.httpService.get(url, { headers, params: apiParams }),
+        );
+        const data = response.data;
+        if (data?.success === 'OK' && data?.payload) {
+          const payload = data.payload;
+          pageCount = payload.pageCount || 1;
+          if (payload.resultados && Array.isArray(payload.resultados)) {
+            allResultados = [...allResultados, ...payload.resultados];
+          } else {
+            break;
+          }
+        } else {
+          break;
+        }
+        page++;
+      } while (page <= pageCount);
+
+      return {
+        success: true,
+        count: allResultados.length,
+        resultados: allResultados,
+      };
     } catch (error) {
-      this.logger.error(
-        `CRON: Error en la sincronización programada: ${error.message}`,
+      this.logger.error(`Error searching buscador external: ${error.message}`);
+      throw new HttpException(
+        error.response?.data?.message ||
+          error.message ||
+          'Error al conectar con el Buscador de Mercado Público',
+        error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
   }
