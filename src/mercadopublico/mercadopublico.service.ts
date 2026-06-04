@@ -131,6 +131,44 @@ export class MercadoPublicoService {
   }
 
   /**
+   * Obtiene el detalle de una orden de compra específica por su código.
+   * SIEMPRE EN TIEMPO REAL desde la API OFICIAL.
+   * @param codigo Código de la OC (ej. 1234-56-SE23)
+   */
+  async findOrdenCompra(codigo: string) {
+    try {
+      const url = new URL(
+        'https://api.mercadopublico.cl/servicios/v1/publico/ordenesdecompra.json',
+      );
+      url.searchParams.append('ticket', this.ticket);
+      url.searchParams.append('codigo', codigo);
+
+      console.log(
+        `[MercadoPublico] API CALL (REAL-TIME OFFICIAL): Fetching OC for ${codigo}`,
+      );
+      const { data } = await firstValueFrom(
+        this.httpService.get(url.toString()),
+      );
+
+      if (!data || data.Cantidad === 0) {
+        throw new HttpException(
+          'Orden de Compra no encontrada en Mercado Público',
+          HttpStatus.NOT_FOUND,
+        );
+      }
+
+      return data;
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new HttpException(
+        error.response?.data ||
+          'Error al consultar detalle oficial de Orden de Compra',
+        error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
    * Busca licitaciones por similitud básica en el listado ya filtrado del webhook.
    */
   async searchSimilar(query: string) {

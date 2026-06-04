@@ -26,4 +26,9 @@ export class MercadoPublicoController {
   findOne(@Param('codigo') codigo: string) {
     return this.mpService.findOne(codigo);
   }
+
+  @Get('ordenes-compra/:codigo')
+  findOrdenCompra(@Param('codigo') codigo: string) {
+    return this.mpService.findOrdenCompra(codigo);
+  }
 }

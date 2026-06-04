@@ -5,6 +5,8 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { redisStore } from 'cache-manager-redis-yet';
 import { MercadoPublicoService } from './mercadopublico.service';
 import { MercadoPublicoController } from './mercadopublico.controller';
+import { CompraAgilService } from './compra-agil.service';
+import { CompraAgilController } from './compra-agil.controller';
 import { AuthModule } from '../auth/auth.module';
 
 @Module({
@@ -26,8 +28,8 @@ import { AuthModule } from '../auth/auth.module';
       inject: [ConfigService],
     }),
   ],
-  controllers: [MercadoPublicoController],
-  providers: [MercadoPublicoService],
-  exports: [MercadoPublicoService],
+  controllers: [MercadoPublicoController, CompraAgilController],
+  providers: [MercadoPublicoService, CompraAgilService],
+  exports: [MercadoPublicoService, CompraAgilService],
 })
 export class MercadoPublicoModule {}
