@@ -58,4 +58,13 @@ export class UsersController {
       body.newPassword,
     );
   }
+
+  @Post('admin-disable-mfa')
+  async disableUserMfa(@Body() body: { userId: string }) {
+    if (!body.userId) {
+      throw new HttpException('userId es requerido', HttpStatus.BAD_REQUEST);
+    }
+
+    return await this.usersService.disableUserMfa(body.userId);
+  }
 }

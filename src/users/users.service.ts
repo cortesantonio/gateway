@@ -103,4 +103,33 @@ export class UsersService {
       };
     });
   }
+
+  async disableUserMfa(userId: string) {
+    const adminClient = this.supabaseService.getAdminClient();
+
+    const { data, error } = await adminClient.auth.admin.mfa.listFactors({
+      userId,
+    });
+
+    if (error) {
+      console.error('Error obteniendo factores MFA del usuario:', error);
+      throw new BadRequestException(error.message);
+    }
+
+    if (!data || !data.factors) return { success: true };
+
+    for (const factor of data.factors) {
+      const { error: deleteError } =
+        await adminClient.auth.admin.mfa.deleteFactor({
+          userId,
+          id: factor.id,
+        });
+      if (deleteError) {
+        console.error(`Error eliminando factor MFA ${factor.id}:`, deleteError);
+        throw new BadRequestException(deleteError.message);
+      }
+    }
+
+    return { success: true };
+  }
 }
