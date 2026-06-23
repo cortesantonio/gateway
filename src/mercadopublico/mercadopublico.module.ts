@@ -7,6 +7,8 @@ import { MercadoPublicoService } from './mercadopublico.service';
 import { MercadoPublicoController } from './mercadopublico.controller';
 import { CompraAgilService } from './compra-agil.service';
 import { CompraAgilController } from './compra-agil.controller';
+import { TratoDirectoService } from './trato-directo.service';
+import { TratoDirectoController } from './trato-directo.controller';
 import { AuthModule } from '../auth/auth.module';
 
 @Module({
@@ -28,8 +30,12 @@ import { AuthModule } from '../auth/auth.module';
       inject: [ConfigService],
     }),
   ],
-  controllers: [MercadoPublicoController, CompraAgilController],
-  providers: [MercadoPublicoService, CompraAgilService],
-  exports: [MercadoPublicoService, CompraAgilService],
+  controllers: [
+    MercadoPublicoController,
+    CompraAgilController,
+    TratoDirectoController,
+  ],
+  providers: [MercadoPublicoService, CompraAgilService, TratoDirectoService],
+  exports: [MercadoPublicoService, CompraAgilService, TratoDirectoService],
 })
 export class MercadoPublicoModule {}
