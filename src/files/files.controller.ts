@@ -425,6 +425,49 @@ export class FilesController {
     };
   }
 
+  @Post('libro_entrega')
+  @UseGuards(SupabaseAuthGuard)
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      fileFilter: (req, file, cb) => {
+        const ext = file.originalname
+          .toLowerCase()
+          .match(/\.(jpg|jpeg|png|gif|pdf)$/);
+        if (!ext) {
+          return cb(
+            new Error('Solo se permiten imágenes (JPG, PNG, GIF) o PDF'),
+            false,
+          );
+        }
+        cb(null, true);
+      },
+      limits: {
+        fileSize: 10 * 1024 * 1024, // 10MB
+      },
+    }),
+  )
+  async uploadLibroEntrega(@UploadedFile() file: Express.Multer.File) {
+    this.filesService.validateFile(file);
+    const filename = this.filesService.generateFileName(file.originalname);
+    const uploadedFilename = await this.filesService.uploadFile(
+      file,
+      filename,
+      'libro_entrega',
+    );
+    return {
+      success: true,
+      message: 'Evidencia de libro de entrega subida exitosamente',
+      data: {
+        filename: uploadedFilename,
+        originalname: file.originalname,
+        size: file.size,
+        mimetype: file.mimetype,
+        uploadedAt: new Date().toISOString(),
+      },
+    };
+  }
+
   @Get('boletas/:filename')
   @UseGuards(SupabaseAuthGuard)
   async getBoleta(@Param('filename') filename: string, @Res() res: Response) {
