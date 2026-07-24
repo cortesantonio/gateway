@@ -54,8 +54,15 @@ pids
 # Diagnostic reports (https://nodejs.org/api/report.html)
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
-# Nodebb
+# Build outputs
 dist
 .dist
 /dist
 dist/*
+
+# Python local-agent builds
+local-agent/dist/
+local-agent/build/
+local-agent/__pycache__/
+*.pyc
+
