@@ -67,4 +67,13 @@ export class UsersController {
 
     return await this.usersService.disableUserMfa(body.userId);
   }
+
+  @Post('admin-delete')
+  async deleteAuthUser(@Body() body: { userId: string }) {
+    if (!body.userId) {
+      throw new HttpException('userId es requerido', HttpStatus.BAD_REQUEST);
+    }
+
+    return await this.usersService.deleteAuthUser(body.userId);
+  }
 }

@@ -72,30 +72,14 @@ export class UsersService {
       page++;
     }
 
-    // Obtener detalles completos de cada usuario en paralelo para recuperar su arreglo de factores MFA
-    const detailedUsers = await Promise.all(
-      allUsers.map(async (user) => {
-        try {
-          const { data, error } = await adminClient.auth.admin.getUserById(
-            user.id,
-          );
-          if (error || !data || !data.user) {
-            return user;
-          }
-          return data.user;
-        } catch (e) {
-          console.error(`Error obteniendo detalles del usuario ${user.id}:`, e);
-          return user;
-        }
-      }),
-    );
-
-    // Mapeamos para retornar la info de seguridad necesaria
-    return detailedUsers.map((user) => {
+    // Mapeamos directamente los usuarios devueltos por listUsers para obtener su last_sign_in_at y factores de seguridad sin consultas N+1
+    return allUsers.map((user) => {
       const factors = (
         user as unknown as { factors?: Array<{ status: string }> }
       ).factors;
-      const mfa_enabled = (factors || []).some((f) => f.status === 'verified');
+      const mfa_enabled = Array.isArray(factors)
+        ? factors.some((f) => f.status === 'verified')
+        : false;
       return {
         id: user.id,
         last_sign_in_at: user.last_sign_in_at ?? null,
@@ -128,6 +112,30 @@ export class UsersService {
         console.error(`Error eliminando factor MFA ${factor.id}:`, deleteError);
         throw new BadRequestException(deleteError.message);
       }
+    }
+
+    return { success: true };
+  }
+
+  async deleteAuthUser(userId: string) {
+    const adminClient = this.supabaseService.getAdminClient();
+
+    // 1. Eliminar de la tabla pública `user` primeramente (por relaciones)
+    const { error: dbError } = await adminClient
+      .from('user')
+      .delete()
+      .eq('id', userId);
+
+    if (dbError) {
+      console.warn(`Aviso o error al eliminar en tabla user: ${dbError.message}`);
+    }
+
+    // 2. Eliminar de Supabase Auth
+    const { error: authError } = await adminClient.auth.admin.deleteUser(userId);
+
+    if (authError) {
+      console.error(`Error eliminando usuario ${userId} de Supabase Auth:`, authError);
+      throw new BadRequestException(authError.message);
     }
 
     return { success: true };

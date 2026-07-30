@@ -36,25 +36,37 @@ export class VerifyLinkDeviceDto {
   group_id: string;
 }
 
+export class UpdateQuotaDto {
+  monthly_limit: number;
+}
+
 export interface DeviceRecord {
   id: string;
-  device_serial: string;   // Completo solo si is_linked=true; censurado si is_linked=false
+  device_serial: string;   // Completo si es admin o si is_linked=true
   masked_serial: string;   // Siempre censurado (ej: "A65JUT4C2300••••")
   is_linked: boolean;      // true = ya vinculado al grupo solicitante
   model_name: string;
   group_id?: string;
+  group_name?: string;
   status: DeviceStatus;
   monthly_limit: number;
   current_month_usage: number;
   last_reset_month: string;
   last_seen_at: string;
   created_at: string;
+  task_stats?: {
+    total: number;
+    completed: number;
+    failed: number;
+    pending: number;
+  };
   celular_info?: {
     marca?: string;
     modelo?: string;
-    numero?: string;       // Siempre censurado (ej: "+56 9 1234 ••••")
+    numero?: string;
     nombre_completo?: string;
     id_establecimiento?: number;
     estado?: string;
   };
 }
+

@@ -43,11 +43,51 @@ export class DeviceTasksController {
   /**
    * Obtener dispositivos conectados y métricas de cuotas mensuales.
    * Filtra por el grupo/establecimiento si se proporciona `groupId`.
+   * Si `admin=true`, devuelve todos los dispositivos con seriales y datos completos.
    */
   @Get('devices')
   @UseGuards(SupabaseAuthGuard)
-  async listDevices(@Query('groupId') groupId?: string) {
-    return this.deviceTasksService.listDevices(groupId);
+  async listDevices(
+    @Query('groupId') groupId?: string,
+    @Query('admin') admin?: string,
+  ) {
+    const isAdmin = admin === 'true';
+    return this.deviceTasksService.listDevices(groupId, isAdmin);
+  }
+
+  /**
+   * Historial global/filtrado de tareas de dispositivos para el administrador.
+   */
+  @Get('tasks-history')
+  @UseGuards(SupabaseAuthGuard)
+  async getTaskHistory(
+    @Query('serial') serial?: string,
+    @Query('status') status?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const limitNum = limit ? parseInt(limit, 10) : 50;
+    return this.deviceTasksService.getTaskHistory(serial, status, limitNum);
+  }
+
+  /**
+   * Actualizar límite mensual de SMS de un dispositivo (Admin).
+   */
+  @Patch('devices/:serial/quota')
+  @UseGuards(SupabaseAuthGuard)
+  async updateDeviceQuota(
+    @Param('serial') serial: string,
+    @Body('monthly_limit') monthlyLimit: number,
+  ) {
+    return this.deviceTasksService.updateDeviceQuota(serial, monthlyLimit);
+  }
+
+  /**
+   * Desvincular un dispositivo del grupo/establecimiento actual (Admin).
+   */
+  @Post('devices/:serial/unlink')
+  @UseGuards(SupabaseAuthGuard)
+  async unlinkDevice(@Param('serial') serial: string) {
+    return this.deviceTasksService.unlinkDevice(serial);
   }
 
   /**
