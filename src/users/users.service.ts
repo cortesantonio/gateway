@@ -127,14 +127,20 @@ export class UsersService {
       .eq('id', userId);
 
     if (dbError) {
-      console.warn(`Aviso o error al eliminar en tabla user: ${dbError.message}`);
+      console.warn(
+        `Aviso o error al eliminar en tabla user: ${dbError.message}`,
+      );
     }
 
     // 2. Eliminar de Supabase Auth
-    const { error: authError } = await adminClient.auth.admin.deleteUser(userId);
+    const { error: authError } =
+      await adminClient.auth.admin.deleteUser(userId);
 
     if (authError) {
-      console.error(`Error eliminando usuario ${userId} de Supabase Auth:`, authError);
+      console.error(
+        `Error eliminando usuario ${userId} de Supabase Auth:`,
+        authError,
+      );
       throw new BadRequestException(authError.message);
     }
 

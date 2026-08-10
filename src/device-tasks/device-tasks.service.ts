@@ -1,4 +1,10 @@
-import { Injectable, Logger, BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { SupabaseService } from '../auth/supabase.service';
 import {
@@ -13,7 +19,7 @@ import {
 export class DeviceTasksService {
   private readonly logger = new Logger(DeviceTasksService.name);
 
-  constructor(private readonly supabaseService: SupabaseService) { }
+  constructor(private readonly supabaseService: SupabaseService) {}
 
   /**
    * Registra o actualiza un dispositivo local con su heartbeat (ping).
@@ -62,7 +68,9 @@ export class DeviceTasksService {
 
       const { data: matchedCelular } = await client
         .from('celulares')
-        .select('serial_number, marca, modelo, numero, nombre_completo, id_establecimiento, estado')
+        .select(
+          'serial_number, marca, modelo, numero, nombre_completo, id_establecimiento, estado',
+        )
         .eq('serial_number', device_serial)
         .eq('activo', true)
         .maybeSingle();
@@ -92,7 +100,9 @@ export class DeviceTasksService {
 
       const { data: matchedCelular } = await client
         .from('celulares')
-        .select('serial_number, marca, modelo, numero, nombre_completo, id_establecimiento, estado')
+        .select(
+          'serial_number, marca, modelo, numero, nombre_completo, id_establecimiento, estado',
+        )
         .eq('serial_number', device_serial)
         .eq('activo', true)
         .maybeSingle();
@@ -112,7 +122,10 @@ export class DeviceTasksService {
    * - Si isAdmin=true: Devuelve todos los dispositivos con seriales completos, nombres de grupos, número no censurado y estadísticas de tareas.
    * - Si es por grupo: Vinculados al grupo devuelven serial completo, sin grupo devuelven serial censurado.
    */
-  async listDevices(groupId?: string, isAdmin: boolean = false): Promise<DeviceRecord[]> {
+  async listDevices(
+    groupId?: string,
+    isAdmin: boolean = false,
+  ): Promise<DeviceRecord[]> {
     const client = this.supabaseService.getAdminClient();
     let query = client
       .from('registered_devices')
@@ -131,15 +144,21 @@ export class DeviceTasksService {
     const serials = devices.map((d) => d.device_serial);
     const { data: dbCelulares } = await client
       .from('celulares')
-      .select('marca, modelo, numero, nombre_completo, id_establecimiento, estado, serial_number')
+      .select(
+        'marca, modelo, numero, nombre_completo, id_establecimiento, estado, serial_number',
+      )
       .in('serial_number', serials)
       .eq('activo', true);
 
-    const celularesMap = new Map((dbCelulares || []).map((c) => [c.serial_number, c]));
+    const celularesMap = new Map(
+      (dbCelulares || []).map((c) => [c.serial_number, c]),
+    );
 
     // Cargar nombres de grupo si se requiere o hay grupos asociados
-    const groupIds = Array.from(new Set(devices.map((d) => d.group_id).filter(Boolean)));
-    let groupsMap = new Map<string, string>();
+    const groupIds = Array.from(
+      new Set(devices.map((d) => d.group_id).filter(Boolean)),
+    );
+    const groupsMap = new Map<string, string>();
     if (groupIds.length > 0) {
       const { data: dbGroups } = await client
         .from('groups')
@@ -154,7 +173,10 @@ export class DeviceTasksService {
     }
 
     // Cargar estadísticas de tareas si es Admin
-    let taskStatsMap = new Map<string, { total: number; completed: number; failed: number; pending: number }>();
+    const taskStatsMap = new Map<
+      string,
+      { total: number; completed: number; failed: number; pending: number }
+    >();
     if (isAdmin && serials.length > 0) {
       const { data: tasks } = await client
         .from('device_tasks')
@@ -164,21 +186,31 @@ export class DeviceTasksService {
       if (tasks) {
         for (const t of tasks) {
           if (!t.device_serial) continue;
-          const current = taskStatsMap.get(t.device_serial) || { total: 0, completed: 0, failed: 0, pending: 0 };
+          const current = taskStatsMap.get(t.device_serial) || {
+            total: 0,
+            completed: 0,
+            failed: 0,
+            pending: 0,
+          };
           current.total++;
           if (t.status === 'completed') current.completed++;
           else if (t.status === 'failed') current.failed++;
-          else if (t.status === 'pending' || t.status === 'processing') current.pending++;
+          else if (t.status === 'pending' || t.status === 'processing')
+            current.pending++;
           taskStatsMap.set(t.device_serial, current);
         }
       }
     }
 
     return devices.map((dev) => {
-      const isLinked = isAdmin ? !!dev.group_id : (!!dev.group_id && String(dev.group_id) === String(groupId));
+      const isLinked = isAdmin
+        ? !!dev.group_id
+        : !!dev.group_id && String(dev.group_id) === String(groupId);
       const maskedSerial = this.maskSerialSuffix(dev.device_serial);
       const cel = celularesMap.get(dev.device_serial);
-      const groupName = dev.group_id ? groupsMap.get(String(dev.group_id)) : undefined;
+      const groupName = dev.group_id
+        ? groupsMap.get(String(dev.group_id))
+        : undefined;
       const stats = taskStatsMap.get(dev.device_serial);
 
       // Enmascarar últimos 4 dígitos si no es admin
@@ -190,20 +222,20 @@ export class DeviceTasksService {
 
       return {
         ...dev,
-        device_serial: (isAdmin || isLinked) ? dev.device_serial : maskedSerial,
+        device_serial: isAdmin || isLinked ? dev.device_serial : maskedSerial,
         masked_serial: maskedSerial,
         is_linked: isLinked,
         group_name: groupName,
         task_stats: stats,
         celular_info: cel
           ? {
-            marca: cel.marca,
-            modelo: cel.modelo,
-            nombre_completo: cel.nombre_completo,
-            id_establecimiento: cel.id_establecimiento,
-            estado: cel.estado,
-            numero: isAdmin ? cel.numero : maskedNumero,
-          }
+              marca: cel.marca,
+              modelo: cel.modelo,
+              nombre_completo: cel.nombre_completo,
+              id_establecimiento: cel.id_establecimiento,
+              estado: cel.estado,
+              numero: isAdmin ? cel.numero : maskedNumero,
+            }
           : undefined,
       };
     });
@@ -212,7 +244,11 @@ export class DeviceTasksService {
   /**
    * Obtiene el historial de tareas procesadas por los dispositivos.
    */
-  async getTaskHistory(device_serial?: string, status?: string, limit: number = 50) {
+  async getTaskHistory(
+    device_serial?: string,
+    status?: string,
+    limit: number = 50,
+  ) {
     const client = this.supabaseService.getAdminClient();
     let query = client
       .from('device_tasks')
@@ -237,7 +273,9 @@ export class DeviceTasksService {
    */
   async updateDeviceQuota(device_serial: string, monthly_limit: number) {
     if (monthly_limit < 1) {
-      throw new BadRequestException('El límite mensual debe ser un número positivo.');
+      throw new BadRequestException(
+        'El límite mensual debe ser un número positivo.',
+      );
     }
     const client = this.supabaseService.getAdminClient();
     const { data: existing } = await client
@@ -247,11 +285,17 @@ export class DeviceTasksService {
       .maybeSingle();
 
     if (!existing) {
-      throw new NotFoundException(`No se encontró el dispositivo con serial ${device_serial}`);
+      throw new NotFoundException(
+        `No se encontró el dispositivo con serial ${device_serial}`,
+      );
     }
 
     const isOverQuota = existing.current_month_usage >= monthly_limit;
-    const newStatus = isOverQuota ? 'quota_exceeded' : (existing.status === 'quota_exceeded' ? 'online' : existing.status);
+    const newStatus = isOverQuota
+      ? 'quota_exceeded'
+      : existing.status === 'quota_exceeded'
+        ? 'online'
+        : existing.status;
 
     const { data, error } = await client
       .from('registered_devices')
@@ -295,7 +339,9 @@ export class DeviceTasksService {
     // La columna group_id es bigint → convertir a número
     const groupIdNum = parseInt(String(group_id), 10);
     if (isNaN(groupIdNum)) {
-      throw new BadRequestException('El group_id proporcionado no es un número válido.');
+      throw new BadRequestException(
+        'El group_id proporcionado no es un número válido.',
+      );
     }
 
     // El masked_serial tiene la forma "XXXXXXXXXX••••"; extraemos el prefijo visible
@@ -324,7 +370,9 @@ export class DeviceTasksService {
 
     // Si ya está vinculado al mismo grupo, retornar sin modificar
     if (matched.group_id && String(matched.group_id) === String(groupIdNum)) {
-      this.logger.log(`Dispositivo ${this.maskSerialSuffix(matched.device_serial)} ya estaba vinculado al grupo ${groupIdNum}`);
+      this.logger.log(
+        `Dispositivo ${this.maskSerialSuffix(matched.device_serial)} ya estaba vinculado al grupo ${groupIdNum}`,
+      );
       const maskedSerial = this.maskSerialSuffix(matched.device_serial);
       return {
         ...matched,
@@ -344,7 +392,9 @@ export class DeviceTasksService {
 
     if (updateError) throw new BadRequestException(updateError.message);
 
-    this.logger.log(`Dispositivo ${this.maskSerialSuffix(matched.device_serial)} vinculado al grupo ${groupIdNum}`);
+    this.logger.log(
+      `Dispositivo ${this.maskSerialSuffix(matched.device_serial)} vinculado al grupo ${groupIdNum}`,
+    );
 
     const maskedSerial = this.maskSerialSuffix(updated.device_serial);
     return {
@@ -371,7 +421,9 @@ export class DeviceTasksService {
     messages?: Record<string, string>,
   ) {
     if (!notificationIds || notificationIds.length === 0) {
-      throw new BadRequestException('Debe seleccionar al menos una cita para enviar por SMS.');
+      throw new BadRequestException(
+        'Debe seleccionar al menos una cita para enviar por SMS.',
+      );
     }
 
     const client = this.supabaseService.getAdminClient();
@@ -388,12 +440,12 @@ export class DeviceTasksService {
         const quotaLeft = device.monthly_limit - device.current_month_usage;
         if (quotaLeft <= 0) {
           throw new BadRequestException(
-            `El dispositivo (${device_serial}) alcanzó su límite de ${device.monthly_limit} SMS/mes.`
+            `El dispositivo (${device_serial}) alcanzó su límite de ${device.monthly_limit} SMS/mes.`,
           );
         }
         if (notificationIds.length > quotaLeft) {
           throw new BadRequestException(
-            `Solo dispone de ${quotaLeft} SMS restantes este mes en este dispositivo (intentó encolar ${notificationIds.length}).`
+            `Solo dispone de ${quotaLeft} SMS restantes este mes en este dispositivo (intentó encolar ${notificationIds.length}).`,
           );
         }
 
@@ -422,24 +474,34 @@ export class DeviceTasksService {
       .in('id', parsedNotificationIds);
 
     if (fetchError) {
-      this.logger.error(`Error obteniendo citas seleccionadas: ${fetchError.message}`);
+      this.logger.error(
+        `Error obteniendo citas seleccionadas: ${fetchError.message}`,
+      );
       throw new BadRequestException(fetchError.message);
     }
 
     if (!selectedAppointments || selectedAppointments.length === 0) {
-      throw new BadRequestException('No se encontraron las citas seleccionadas.');
+      throw new BadRequestException(
+        'No se encontraron las citas seleccionadas.',
+      );
     }
 
     const queuedTasks: any[] = [];
     const isUuid = (val: any) =>
       typeof val === 'string' &&
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        val,
+      );
 
     // 3. Encolar cada cita en device_tasks
     for (const appt of selectedAppointments) {
       const phoneNumber = appt.telefono_paciente || appt.telefono;
       const customMessage = messages?.[String(appt.id)] || messages?.[appt.id];
-      const smsMessage = customMessage || appt.mensaje || appt.nota || `Recordatorio de cita médica para ${appt.nombre_paciente || 'paciente'}.`;
+      const smsMessage =
+        customMessage ||
+        appt.mensaje ||
+        appt.nota ||
+        `Recordatorio de cita médica para ${appt.nombre_paciente || 'paciente'}.`;
 
       if (!phoneNumber) continue;
 
@@ -466,7 +528,9 @@ export class DeviceTasksService {
         .single();
 
       if (insertError) {
-        this.logger.error(`Error al insertar tarea para cita ${appt.id}: ${insertError.message}`);
+        this.logger.error(
+          `Error al insertar tarea para cita ${appt.id}: ${insertError.message}`,
+        );
       } else if (task) {
         queuedTasks.push(task);
 
@@ -478,7 +542,9 @@ export class DeviceTasksService {
       }
     }
 
-    this.logger.log(`Se encolaron manualmente ${queuedTasks.length} notificaciones de citas seleccionadas.`);
+    this.logger.log(
+      `Se encolaron manualmente ${queuedTasks.length} notificaciones de citas seleccionadas.`,
+    );
     return {
       count: queuedTasks.length,
       tasks: queuedTasks,
@@ -503,7 +569,7 @@ export class DeviceTasksService {
       if (device) {
         if (device.status === 'offline') {
           throw new BadRequestException(
-            `El dispositivo ${device.model_name || dto.device_serial} se encuentra DESCONECTADO (offline). Conecte el agente local para enviar tareas.`
+            `El dispositivo ${device.model_name || dto.device_serial} se encuentra DESCONECTADO (offline). Conecte el agente local para enviar tareas.`,
           );
         }
         if (device.current_month_usage >= device.monthly_limit) {
@@ -547,8 +613,14 @@ export class DeviceTasksService {
       .maybeSingle();
 
     if (device && device.current_month_usage >= device.monthly_limit) {
-      this.logger.warn(`Dispositivo ${device_serial} con cuota agotada (${device.current_month_usage}/${device.monthly_limit}).`);
-      return { task: null, message: 'Dispositivo sobre el límite mensual (1000 SMS).', quota_exceeded: true };
+      this.logger.warn(
+        `Dispositivo ${device_serial} con cuota agotada (${device.current_month_usage}/${device.monthly_limit}).`,
+      );
+      return {
+        task: null,
+        message: 'Dispositivo sobre el límite mensual (1000 SMS).',
+        quota_exceeded: true,
+      };
     }
 
     // Buscar tareas pendientes para este serial específico o genéricas (sin serial asignado)
@@ -593,14 +665,17 @@ export class DeviceTasksService {
       .eq('id', taskId)
       .maybeSingle();
 
-    if (!currentTask) throw new NotFoundException(`Tarea ${taskId} no encontrada.`);
+    if (!currentTask)
+      throw new NotFoundException(`Tarea ${taskId} no encontrada.`);
 
     const { data: updatedTask, error } = await client
       .from('device_tasks')
       .update({
         status: dto.status,
         result: dto.result ?? currentTask.result,
-        logs: dto.logs ? `${currentTask.logs || ''}\n${dto.logs}` : currentTask.logs,
+        logs: dto.logs
+          ? `${currentTask.logs || ''}\n${dto.logs}`
+          : currentTask.logs,
         error_message: dto.error_message ?? currentTask.error_message,
         device_serial: dto.device_serial || currentTask.device_serial,
       })
@@ -630,7 +705,9 @@ export class DeviceTasksService {
             })
             .eq('id', notificationId);
 
-          this.logger.log(`Notificación de cita ${notificationId} marcada como ENVIADA por SMS.`);
+          this.logger.log(
+            `Notificación de cita ${notificationId} marcada como ENVIADA por SMS.`,
+          );
         }
       } else if (dto.status === 'failed') {
         // Marcar la notificación de cita como 'fallido'
@@ -640,13 +717,19 @@ export class DeviceTasksService {
             .update({ estado_envio: 'fallido' })
             .eq('id', notificationId);
 
-          this.logger.warn(`Notificación de cita ${notificationId} marcada como FALLIDA.`);
+          this.logger.warn(
+            `Notificación de cita ${notificationId} marcada como FALLIDA.`,
+          );
         }
       }
     }
 
     // 2. Manejo para verificación de respuestas SMS (1: Confirmado, 2: Rechazado)
-    if (currentTask.type === 'CHECK_SMS_ANSWERS' && dto.status === 'completed' && dto.result?.messages) {
+    if (
+      currentTask.type === 'CHECK_SMS_ANSWERS' &&
+      dto.status === 'completed' &&
+      dto.result?.messages
+    ) {
       await this.processIncomingSmsResponses(dto.result.messages);
     }
 
@@ -660,13 +743,19 @@ export class DeviceTasksService {
     if (!Array.isArray(messages) || messages.length === 0) return;
     const client = this.supabaseService.getAdminClient();
 
-    this.logger.log(`Procesando ${messages.length} mensajes recuperados de la bandeja ADB...`);
+    this.logger.log(
+      `Procesando ${messages.length} mensajes recuperados de la bandeja ADB...`,
+    );
 
     for (const msg of messages) {
       if (!msg || !msg.body || !msg.address) continue;
 
       // Validar tipo: solo mensajes recibidos (type === 1 o '1' o sin type especificado)
-      if (msg.type !== undefined && msg.type !== null && String(msg.type) !== '1') {
+      if (
+        msg.type !== undefined &&
+        msg.type !== null &&
+        String(msg.type) !== '1'
+      ) {
         continue; // Ignorar mensajes salientes (type 2)
       }
 
@@ -693,7 +782,9 @@ export class DeviceTasksService {
       }
 
       if (!newStatus) {
-        this.logger.debug(`Mensaje de ${msg.address} ("${msg.body}") no coincide con patrón de confirmación (1 o 2).`);
+        this.logger.debug(
+          `Mensaje de ${msg.address} ("${msg.body}") no coincide con patrón de confirmación (1 o 2).`,
+        );
         continue;
       }
 
@@ -711,20 +802,25 @@ export class DeviceTasksService {
       const { data: appointment, error: searchError } = await client
         .from('notificacion_cita')
         .select('id, nombre_paciente, telefono_paciente, estado_confirmacion')
-        .or(`telefono_paciente.ilike.%${last8Digits}%,telefono_paciente.ilike.%${last9Digits}%`)
+        .or(
+          `telefono_paciente.ilike.%${last8Digits}%,telefono_paciente.ilike.%${last9Digits}%`,
+        )
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
 
       if (searchError) {
-        this.logger.error(`Error buscando cita para teléfono ${msg.address}: ${searchError.message}`);
+        this.logger.error(
+          `Error buscando cita para teléfono ${msg.address}: ${searchError.message}`,
+        );
         continue;
       }
 
       if (appointment) {
-        const confirmDate = msg.date && !isNaN(Number(msg.date))
-          ? new Date(Number(msg.date)).toISOString()
-          : new Date().toISOString();
+        const confirmDate =
+          msg.date && !isNaN(Number(msg.date))
+            ? new Date(Number(msg.date)).toISOString()
+            : new Date().toISOString();
 
         const { error: updateError } = await client
           .from('notificacion_cita')
@@ -735,14 +831,18 @@ export class DeviceTasksService {
           .eq('id', appointment.id);
 
         if (updateError) {
-          this.logger.error(`Error actualizando cita ${appointment.id}: ${updateError.message}`);
+          this.logger.error(
+            `Error actualizando cita ${appointment.id}: ${updateError.message}`,
+          );
         } else {
           this.logger.log(
-            `✅ Cita ID ${appointment.id} de "${appointment.nombre_paciente}" (${appointment.telefono_paciente}) actualizada exitosamente a '${newStatus.toUpperCase()}' vía SMS ("${msg.body}").`
+            `✅ Cita ID ${appointment.id} de "${appointment.nombre_paciente}" (${appointment.telefono_paciente}) actualizada exitosamente a '${newStatus.toUpperCase()}' vía SMS ("${msg.body}").`,
           );
         }
       } else {
-        this.logger.warn(`No se encontró ninguna cita registrada para el teléfono ${msg.address} (${digitsOnly}).`);
+        this.logger.warn(
+          `No se encontró ninguna cita registrada para el teléfono ${msg.address} (${digitsOnly}).`,
+        );
       }
     }
   }
@@ -769,7 +869,9 @@ export class DeviceTasksService {
         })
         .eq('id', device.id);
 
-      this.logger.log(`Cuota dispositivo ${device_serial}: ${newUsage}/${device.monthly_limit}`);
+      this.logger.log(
+        `Cuota dispositivo ${device_serial}: ${newUsage}/${device.monthly_limit}`,
+      );
     }
   }
 
@@ -793,7 +895,9 @@ export class DeviceTasksService {
    * Limpia las tareas colgadas en 'processing' asociadas a un dispositivo que se desconectó
    * y revierte el estado de las citas asociadas para no corromper las estadísticas.
    */
-  private async cleanupStuckTasksForOfflineDevice(device_serial: string): Promise<void> {
+  private async cleanupStuckTasksForOfflineDevice(
+    device_serial: string,
+  ): Promise<void> {
     const client = this.supabaseService.getAdminClient();
 
     const { data: stuckTasks } = await client
@@ -809,7 +913,8 @@ export class DeviceTasksService {
         .from('device_tasks')
         .update({
           status: 'failed',
-          error_message: 'Dispositivo desconectado durante la ejecución (Timeout >45s)',
+          error_message:
+            'Dispositivo desconectado durante la ejecución (Timeout >45s)',
         })
         .eq('id', task.id);
 
@@ -820,7 +925,9 @@ export class DeviceTasksService {
           .update({ estado_envio: 'fallido' })
           .eq('id', notificationId);
 
-        this.logger.warn(`Cita ${notificationId} marcada como FALLIDA por desconexión del equipo ${this.maskSerialSuffix(device_serial)}.`);
+        this.logger.warn(
+          `Cita ${notificationId} marcada como FALLIDA por desconexión del equipo ${this.maskSerialSuffix(device_serial)}.`,
+        );
       }
     }
   }
@@ -837,7 +944,9 @@ export class DeviceTasksService {
       .eq('device_serial', device_serial);
 
     await this.cleanupStuckTasksForOfflineDevice(device_serial);
-    this.logger.log(`Dispositivo ${this.maskSerialSuffix(device_serial)} marcado como OFFLINE (shutdown del agente).`);
+    this.logger.log(
+      `Dispositivo ${this.maskSerialSuffix(device_serial)} marcado como OFFLINE (shutdown del agente).`,
+    );
   }
 
   /**
@@ -860,11 +969,16 @@ export class DeviceTasksService {
     await client
       .from('registered_devices')
       .update({ status: 'offline' })
-      .in('id', stale.map((d) => d.id));
+      .in(
+        'id',
+        stale.map((d) => d.id),
+      );
 
     for (const d of stale) {
       await this.cleanupStuckTasksForOfflineDevice(d.device_serial);
-      this.logger.warn(`Timeout: Dispositivo ${this.maskSerialSuffix(d.device_serial)} marcado OFFLINE (sin heartbeat >45s). Tareas colgadas limpiadas.`);
+      this.logger.warn(
+        `Timeout: Dispositivo ${this.maskSerialSuffix(d.device_serial)} marcado OFFLINE (sin heartbeat >45s). Tareas colgadas limpiadas.`,
+      );
     }
   }
 
@@ -895,20 +1009,18 @@ export class DeviceTasksService {
         .maybeSingle();
 
       if (!activeTask) {
-        await client
-          .from('device_tasks')
-          .insert({
-            device_serial: dev.device_serial,
-            group_id: dev.group_id ? String(dev.group_id) : null,
-            type: 'CHECK_SMS_ANSWERS',
-            payload: { auto_cron: true },
-            status: 'pending',
-          });
+        await client.from('device_tasks').insert({
+          device_serial: dev.device_serial,
+          group_id: dev.group_id ? String(dev.group_id) : null,
+          type: 'CHECK_SMS_ANSWERS',
+          payload: { auto_cron: true },
+          status: 'pending',
+        });
 
-        this.logger.log(`Cron Automático: Lectura de respuestas SMS encolada para dispositivo ${this.maskSerialSuffix(dev.device_serial)}.`);
+        this.logger.log(
+          `Cron Automático: Lectura de respuestas SMS encolada para dispositivo ${this.maskSerialSuffix(dev.device_serial)}.`,
+        );
       }
     }
   }
 }
-
-

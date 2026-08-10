@@ -53,7 +53,7 @@ export class CompraAgilService {
       const headers = { ticket: this.ticket };
 
       const response = await firstValueFrom(
-        this.httpService.get(url, { headers, params }),
+        this.httpService.get(url, { headers, params, timeout: 10000 }),
       );
 
       const body = response.data;
@@ -76,10 +76,16 @@ export class CompraAgilService {
       const status = error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR;
       const data = error.response?.data;
 
-      this.logger.error(
-        `Error calling ChileCompra V2 API: ${error.message}`,
-        error.stack,
-      );
+      if (status === 504 || error.code === 'ECONNABORTED' || error.message?.includes('504')) {
+        this.logger.warn(
+          `ChileCompra V2 API 504 Timeout (${endpoint}). El servidor de Mercado Público no respondió en 10s.`,
+        );
+      } else {
+        this.logger.error(
+          `Error calling ChileCompra V2 API: ${error.message}`,
+          error.stack,
+        );
+      }
 
       throw new HttpException(
         data?.errors?.[0]?.mensaje ||

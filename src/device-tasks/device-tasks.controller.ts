@@ -35,7 +35,8 @@ export class DeviceTasksController {
    */
   @Post('offline')
   async markOffline(@Body('device_serial') device_serial: string) {
-    if (!device_serial) return { ok: false, message: 'Se requiere device_serial.' };
+    if (!device_serial)
+      return { ok: false, message: 'Se requiere device_serial.' };
     await this.deviceTasksService.markDeviceOffline(device_serial);
     return { ok: true };
   }
@@ -101,7 +102,12 @@ export class DeviceTasksController {
     @Body('group_id') groupId?: string,
     @Body('messages') messages?: Record<string, string>,
   ) {
-    return this.deviceTasksService.queueSelectedAppointments(notificationIds, device_serial, groupId, messages);
+    return this.deviceTasksService.queueSelectedAppointments(
+      notificationIds,
+      device_serial,
+      groupId,
+      messages,
+    );
   }
 
   /**

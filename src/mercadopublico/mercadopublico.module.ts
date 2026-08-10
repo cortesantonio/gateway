@@ -4,6 +4,7 @@ import { CacheModule } from '@nestjs/cache-manager';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { redisStore } from 'cache-manager-redis-yet';
 import { MercadoPublicoService } from './mercadopublico.service';
+import { MercadoPublicoSyncService } from './mercadopublico-sync.service';
 import { MercadoPublicoController } from './mercadopublico.controller';
 import { CompraAgilService } from './compra-agil.service';
 import { CompraAgilController } from './compra-agil.controller';
@@ -35,7 +36,17 @@ import { AuthModule } from '../auth/auth.module';
     CompraAgilController,
     TratoDirectoController,
   ],
-  providers: [MercadoPublicoService, CompraAgilService, TratoDirectoService],
-  exports: [MercadoPublicoService, CompraAgilService, TratoDirectoService],
+  providers: [
+    MercadoPublicoService,
+    MercadoPublicoSyncService,
+    CompraAgilService,
+    TratoDirectoService,
+  ],
+  exports: [
+    MercadoPublicoService,
+    MercadoPublicoSyncService,
+    CompraAgilService,
+    TratoDirectoService,
+  ],
 })
 export class MercadoPublicoModule {}

@@ -42,9 +42,9 @@ export class UpdateQuotaDto {
 
 export interface DeviceRecord {
   id: string;
-  device_serial: string;   // Completo si es admin o si is_linked=true
-  masked_serial: string;   // Siempre censurado (ej: "A65JUT4C2300••••")
-  is_linked: boolean;      // true = ya vinculado al grupo solicitante
+  device_serial: string; // Completo si es admin o si is_linked=true
+  masked_serial: string; // Siempre censurado (ej: "A65JUT4C2300••••")
+  is_linked: boolean; // true = ya vinculado al grupo solicitante
   model_name: string;
   group_id?: string;
   group_name?: string;
@@ -69,4 +69,3 @@ export interface DeviceRecord {
     estado?: string;
   };
 }
-
