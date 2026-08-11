@@ -36,13 +36,77 @@ export class MercadoPublicoSyncService {
   ) {}
 
   /**
-   * Cron ejecutable cada 15 minutos para actualizar automáticamente
-   * todos los registros activos/en curso de Mercado Público.
+   * Valida si un código cumple con la nomenclatura oficial de Mercado Público (ej: 2445-139-COT26, 2445-45-LP25)
+   * o si es un UUID válido de Trato Directo. Omite cualquier marcador de posición o formato incorrecto.
    */
-  @Cron('0 */15 * * * *')
+  public isValidCode(
+    code: string | null | undefined,
+    allowUuid = false,
+  ): boolean {
+    if (!code) return false;
+    const clean = code.toString().trim().toUpperCase();
+
+    const invalidKeywords = [
+      'PENDIENTE',
+      'NIC',
+      'N/A',
+      'NINGUNO',
+      'SIN CODIGO',
+      'S/C',
+      'NULL',
+      'UNDEFINED',
+      'BORRADOR',
+      'TEST',
+    ];
+    if (invalidKeywords.includes(clean) || clean.length < 5) {
+      return false;
+    }
+
+    // Formato oficial de Mercado Público: DIGITOS-DIGITOS-LETRAS_Y_NUMEROS (ej: 2445-139-COT26, 2445-1933-TD26)
+    const mpCodeRegex = /^\d{1,6}-\d{1,6}-[A-Z0-9]{2,6}$/;
+    if (mpCodeRegex.test(clean)) {
+      return true;
+    }
+
+    // UUIDs válidos (para fichas de Trato Directo V2)
+    if (allowUuid) {
+      const uuidRegex =
+        /^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$/;
+      if (uuidRegex.test(clean)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  /**
+   * Verifica si todas las fechas importadas relevantes de un registro ya pasaron.
+   * Sirve para omitir re-sincronizaciones innecesarias en la API externa de Mercado Público.
+   */
+  public hasAllImportedDatesPassed(
+    dates: (string | null | undefined)[],
+  ): boolean {
+    const validDates = dates
+      .filter((d): d is string => !!d)
+      .map((d) => new Date(d))
+      .filter((d) => !isNaN(d.getTime()));
+
+    if (validDates.length === 0) return false;
+
+    const now = Date.now();
+    const maxDate = Math.max(...validDates.map((d) => d.getTime()));
+    return maxDate < now;
+  }
+
+  /**
+   * Cron ejecutable 4 veces al día (08:00, 12:00, 16:00, 20:00) para actualizar
+   * automáticamente todos los registros activos/en curso de Mercado Público.
+   */
+  @Cron('0 0 8,12,16,20 * * *')
   async handleCronSyncActive() {
     this.logger.log(
-      '[SyncEngine] CRON: Iniciando sincronización de procesos activos...',
+      '[SyncEngine] CRON (4x/día): Iniciando sincronización de procesos activos...',
     );
     try {
       const summary = await this.syncAllActive();
@@ -157,15 +221,27 @@ export class MercadoPublicoSyncService {
           .trim()
           .toUpperCase();
 
-        // Omitir códigos no transaccionables o de marcador de posición (PENDIENTE, NIC, etc.)
-        if (
-          !cleanNum ||
-          cleanNum === 'PENDIENTE' ||
-          cleanNum === 'NIC' ||
-          cleanNum === 'N/A' ||
-          cleanNum === 'NINGUNO' ||
-          cleanNum.length < 5
-        ) {
+        // Omitir códigos de licitación incorrectos o fuera de la nomenclatura oficial
+        if (!this.isValidCode(cleanNum)) {
+          this.logger.debug(
+            `[SyncEngine] Omitiendo licitación ID ${lic.id}: número '${cleanNum}' fuera de nomenclatura oficial.`,
+          );
+          continue;
+        }
+
+        // Omitir si todas las fechas de Mercado Público (cierre, servicio, adjudicación) ya pasaron
+        const mpDates = [
+          lic.mp_fecha_cierre,
+          lic.fecha_cierre,
+          lic.mp_fecha_final,
+          lic.fecha_fin_servicio,
+          lic.mp_fecha_estimada_adjudicacion,
+          lic.mp_fecha_adjudicacion,
+        ];
+        if (this.hasAllImportedDatesPassed(mpDates)) {
+          this.logger.debug(
+            `[SyncEngine] Omitiendo licitación ${cleanNum}: sus fechas de Mercado Público ya transcurrieron.`,
+          );
           continue;
         }
 
@@ -323,7 +399,21 @@ export class MercadoPublicoSyncService {
       }
 
       for (const ca of compras) {
-        if (!ca.codigo_compra_agil) continue;
+        if (!this.isValidCode(ca.codigo_compra_agil)) {
+          this.logger.debug(
+            `[SyncEngine] Omitiendo Compra Ágil ID ${ca.id}: código '${ca.codigo_compra_agil}' fuera de nomenclatura oficial.`,
+          );
+          continue;
+        }
+
+        // Omitir si la fecha de cierre ya transcurrió en el pasado
+        if (this.hasAllImportedDatesPassed([ca.fecha_cierre, ca.mp_fecha_cierre])) {
+          this.logger.debug(
+            `[SyncEngine] Omitiendo Compra Ágil ${ca.codigo_compra_agil}: su fecha de cierre ya transcurrió.`,
+          );
+          continue;
+        }
+
         processed++;
 
         try {
@@ -352,8 +442,9 @@ export class MercadoPublicoSyncService {
         }
       }
     } catch (e: any) {
-      this.logger.error
-        (`[SyncEngine] Fallo en syncComprasAgiles: ${e.message}`);
+      this.logger.error(
+        `[SyncEngine] Fallo en syncComprasAgiles: ${e.message}`,
+      );
     }
 
     return { processed, updated, errors };
@@ -387,7 +478,21 @@ export class MercadoPublicoSyncService {
 
       for (const td of tratos) {
         const idFicha = td.uuid_ficha || td.codigo_trato_directo;
-        if (!idFicha) continue;
+        if (!this.isValidCode(idFicha, true)) {
+          this.logger.debug(
+            `[SyncEngine] Omitiendo Trato Directo ID ${td.id}: código/UUID '${idFicha}' fuera de nomenclatura oficial.`,
+          );
+          continue;
+        }
+
+        // Omitir si las fechas del contrato o cierre ya pasaron
+        if (this.hasAllImportedDatesPassed([td.fecha_cierre, td.fecha_termino_contrato])) {
+          this.logger.debug(
+            `[SyncEngine] Omitiendo Trato Directo ${idFicha}: sus fechas del contrato ya transcurrieron.`,
+          );
+          continue;
+        }
+
         processed++;
 
         try {
@@ -411,8 +516,9 @@ export class MercadoPublicoSyncService {
         }
       }
     } catch (e: any) {
-      this.logger.error
-        (`[SyncEngine] Fallo en syncTratosDirectos: ${e.message}`);
+      this.logger.error(
+        `[SyncEngine] Fallo en syncTratosDirectos: ${e.message}`,
+      );
     }
 
     return { processed, updated, errors };
@@ -445,7 +551,21 @@ export class MercadoPublicoSyncService {
       }
 
       for (const oc of ordenes) {
-        if (!oc.codigo_oc) continue;
+        if (!this.isValidCode(oc.codigo_oc)) {
+          this.logger.debug(
+            `[SyncEngine] Omitiendo Orden de Compra ID ${oc.id}: código '${oc.codigo_oc}' fuera de nomenclatura oficial.`,
+          );
+          continue;
+        }
+
+        // Omitir si la OC ya concluyó en estado Aceptada/Cancelada/Rechazada o su fecha de aceptación ya pasó
+        const ocFinalized = ['aceptada', 'cancelada', 'rechazada'].includes((oc.estado_mp || '').toLowerCase());
+        if (ocFinalized || this.hasAllImportedDatesPassed([oc.fecha_aceptacion])) {
+          this.logger.debug(
+            `[SyncEngine] Omitiendo Orden de Compra ${oc.codigo_oc}: fecha de aceptación ya ocurrió o estado finalizado (${oc.estado_mp}).`,
+          );
+          continue;
+        }
         processed++;
 
         try {

@@ -25,12 +25,12 @@ export class MercadoPublicoService {
   }
 
   /**
-   * Cron job que se ejecuta cada 30 minutos para refrescar el cache de las licitaciones desde el webhook.
+   * Cron job que se ejecuta 4 veces al día (08:00, 12:00, 16:00, 20:00) para refrescar el cache desde el webhook.
    */
-  @Cron(CronExpression.EVERY_30_MINUTES)
+  @Cron('0 0 8,12,16,20 * * *')
   async handleCron() {
     console.log(
-      '[MercadoPublico] CRON: Iniciando actualización automática desde webhook...',
+      '[MercadoPublico] CRON (4x/día): Iniciando actualización automática desde webhook...',
     );
     await this.findAll();
     console.log('[MercadoPublico] CRON: Cache actualizado exitosamente.');
