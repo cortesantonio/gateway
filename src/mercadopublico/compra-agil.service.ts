@@ -53,7 +53,7 @@ export class CompraAgilService {
       const headers = { ticket: this.ticket };
 
       const response = await firstValueFrom(
-        this.httpService.get(url, { headers, params, timeout: 10000 }),
+        this.httpService.get(url, { headers, params, timeout: 20000 }),
       );
 
       const body = response.data;
@@ -70,15 +70,24 @@ export class CompraAgilService {
       }
 
       return body?.payload;
-    } catch (error) {
+    } catch (error: any) {
       if (error instanceof HttpException) throw error;
 
       const status = error.response?.status || HttpStatus.INTERNAL_SERVER_ERROR;
       const data = error.response?.data;
 
-      if (status === 504 || error.code === 'ECONNABORTED' || error.message?.includes('504')) {
+      if (
+        status === 504 ||
+        error.code === 'ECONNABORTED' ||
+        error.message?.includes('504') ||
+        error.message?.includes('timeout')
+      ) {
         this.logger.warn(
-          `ChileCompra V2 API 504 Timeout (${endpoint}). El servidor de Mercado Público no respondió en 10s.`,
+          `ChileCompra V2 API Timeout (${endpoint}). El servidor de Mercado Público tardó más de 20s.`,
+        );
+        throw new HttpException(
+          'Timeout al conectar con la API de ChileCompra V2',
+          HttpStatus.GATEWAY_TIMEOUT,
         );
       } else {
         this.logger.error(
@@ -115,6 +124,151 @@ export class CompraAgilService {
   }
 
   /**
+   * Mapea texto de estado del Buscador a código normalizado de Compra Ágil
+   */
+  private mapBuscadorEstadoToCodigo(
+    estadoStr?: string,
+    idEstado?: number,
+  ): string {
+    const str = (estadoStr || '').toLowerCase().trim();
+    if (
+      str.includes('proveedor seleccionado') ||
+      str.includes('adjudicad') ||
+      idEstado === 4
+    ) {
+      return 'adjudicada';
+    }
+    if (str.includes('cerrad') || idEstado === 2) {
+      return 'cerrada';
+    }
+    if (str.includes('desiert') || idEstado === 3) {
+      return 'desierta';
+    }
+    if (
+      str.includes('cancelad') ||
+      str.includes('revocad') ||
+      idEstado === 5
+    ) {
+      return 'cancelada';
+    }
+    return 'publicada';
+  }
+
+  /**
+   * Convierte el payload resumido del Buscador al formato de detalle esperado
+   */
+  private convertBuscadorToDetail(item: any): any {
+    let pubDate: string | null = null;
+    let cieDate: string | null = null;
+    if (item.fecha_publicacion) {
+      try {
+        pubDate = new Date(
+          item.fecha_publicacion.replace(' ', 'T') + ':00',
+        ).toISOString();
+      } catch {
+        pubDate = item.fecha_publicacion;
+      }
+    }
+    if (item.fecha_cierre) {
+      try {
+        cieDate = new Date(
+          item.fecha_cierre.replace(' ', 'T') + ':00',
+        ).toISOString();
+      } catch {
+        cieDate = item.fecha_cierre;
+      }
+    }
+
+    return {
+      codigo: item.codigo,
+      nombre: item.nombre || 'Sin Nombre',
+      descripcion: item.descripcion || '',
+      estado: {
+        id: item.id_estado,
+        codigo: this.mapBuscadorEstadoToCodigo(item.estado, item.id_estado),
+        glosa: item.estado || 'Publicada',
+      },
+      fechas: {
+        fecha_publicacion: pubDate,
+        fecha_cierre: cieDate,
+        fecha_ultimo_cambio: item.fecha_cambio || null,
+      },
+      presupuesto: {
+        monto_disponible:
+          item.monto_disponible_CLP || item.monto_disponible || 0,
+        monto_disponible_clp:
+          item.monto_disponible_CLP || item.monto_disponible || 0,
+        moneda: item.moneda || 'CLP',
+      },
+      institucion: {
+        organismo_comprador: item.organismo || '',
+        unidad_compra: item.unidad || '',
+      },
+      convocatoria: {
+        estado_convocatoria: item.estado_convocatoria || 1,
+        cantidad_proveedores_cotizando:
+          item.cantidad_proveedores_cotizando || 0,
+        descripcion:
+          item.estado_convocatoria === 1
+            ? 'Primer llamado'
+            : `Llamado ${item.estado_convocatoria || 1}`,
+      },
+      _fallback_buscador: true,
+    };
+  }
+
+  /**
+   * Intenta enriquecer los datos de la compra ágil en segundo plano cuando la API V2 responde con retraso
+   */
+  private scheduleBackgroundEnrichment(
+    codigo: string,
+    compraAgilId: number,
+    actorId?: string,
+  ) {
+    const cleanCodigo = codigo.replace(/\s+/g, '');
+    // Ejecutar después de 6 segundos de forma desacoplada
+    setTimeout(async () => {
+      try {
+        this.logger.log(
+          `[BackgroundEnrichment] Intentando obtener detalle V2 en segundo plano para ${cleanCodigo}...`,
+        );
+        const v2Detail = await this.callApi<any>(`/${cleanCodigo}`);
+        if (v2Detail) {
+          const adminDb = this.supabaseService.getAdminClient();
+          const normalized = this.normalizeCompraAgil(
+            v2Detail,
+            'background_enrichment',
+          );
+
+          await adminDb
+            .from('compras_agiles')
+            .update({
+              ...normalized,
+              datos_mp: v2Detail,
+              ultima_sincronizacion_mp: new Date().toISOString(),
+            })
+            .eq('id', compraAgilId);
+
+          await this.logHito(
+            adminDb,
+            compraAgilId,
+            'enriquecimiento_completado',
+            'Detalle extendido y ofertas enriquecidas exitosamente desde Mercado Público V2.',
+            actorId,
+          );
+          this.logger.log(
+            `[BackgroundEnrichment] Compra Ágil ${cleanCodigo} enriquecida con éxito.`,
+          );
+        }
+      } catch (err: any) {
+        this.logger.warn(
+          `[BackgroundEnrichment] Reintento en background para ${cleanCodigo} postergado (${err.message}). Se actualizará en el próximo ciclo cron.`,
+        );
+      }
+    }, 6000);
+  }
+
+  /**
    * Main orchestrator of the syncing process for a single Compra Ágil code.
    * Feches, normalizes, persists, links OCs and logs audit events.
    */
@@ -124,12 +278,55 @@ export class CompraAgilService {
     origen: string = 'manual',
     groupId?: string,
   ) {
+    const cleanCodigo = codigo.replace(/\s+/g, '');
     this.logger.log(
-      `Syncing Compra Ágil ${codigo} (Actor: ${actorId || 'system'}, Origen: ${origen})`,
+      `Syncing Compra Ágil ${cleanCodigo} (Actor: ${actorId || 'system'}, Origen: ${origen})`,
     );
 
-    // 1. Fetch details
-    const extDetail = await this.findOneFromChileCompra(codigo);
+    let extDetail: any = null;
+    let isFallback = false;
+
+    // 1. Intentar obtener detalle V2 oficial
+    try {
+      extDetail = await this.findOneFromChileCompra(cleanCodigo);
+    } catch (err: any) {
+      this.logger.warn(
+        `API V2 detalle de Compra Ágil ${cleanCodigo} tardó o falló (${err.message}). Activando fallback rápido al Buscador de Mercado Público...`,
+      );
+
+      // Fallback: Consultar API rápida de Buscador
+      try {
+        const buscadorRes = await this.searchBuscadorExternal({
+          keywords: cleanCodigo,
+        });
+        const list = buscadorRes?.resultados || [];
+        const found =
+          list.find(
+            (r: any) =>
+              r.codigo?.toString().toUpperCase() ===
+              cleanCodigo.toUpperCase(),
+          ) || (list.length === 1 ? list[0] : null);
+
+        if (found) {
+          this.logger.log(
+            `Compra Ágil ${cleanCodigo} recuperada con éxito desde Buscador MP.`,
+          );
+          extDetail = this.convertBuscadorToDetail(found);
+          isFallback = true;
+        } else {
+          throw err;
+        }
+      } catch (fallbackErr: any) {
+        this.logger.error(
+          `Fallback de Buscador también falló para ${cleanCodigo}: ${fallbackErr.message}`,
+        );
+        throw new HttpException(
+          'El servidor de Mercado Público no respondió a tiempo (Timeout 504). Por favor intenta nuevamente en unos minutos.',
+          HttpStatus.GATEWAY_TIMEOUT,
+        );
+      }
+    }
+
     if (!extDetail) {
       throw new HttpException(
         'No se recibió información de la API de Mercado Público para el código dado',
@@ -216,7 +413,7 @@ export class CompraAgilService {
         adminDb,
         savedRecord.id,
         'importada',
-        `Compra Ágil importada desde Mercado Público en estado: ${savedRecord.estado_mp} (Glosa: ${extDetail.estado?.glosa || 'N/A'})`,
+        `Compra Ágil importada desde Mercado Público en estado: ${savedRecord.estado_mp} (Glosa: ${extDetail.estado?.glosa || 'N/A'})${isFallback ? ' [Modo Rápido / Buscador]' : ''}`,
         actorId,
         null,
         { estado_mp: savedRecord.estado_mp },
@@ -307,7 +504,7 @@ export class CompraAgilService {
         adminDb,
         savedRecord.id,
         'sincronizacion_ejecutada',
-        `Sincronización ejecutada exitosamente (${origen})`,
+        `Sincronización ejecutada exitosamente (${origen})${isFallback ? ' [Modo Rápido / Buscador]' : ''}`,
         actorId,
         null,
         null,
@@ -345,7 +542,17 @@ export class CompraAgilService {
       }
     }
 
-    return savedRecord;
+    // Programar enriquecimiento asíncrono si se usó fallback
+    if (isFallback) {
+      this.scheduleBackgroundEnrichment(cleanCodigo, savedRecord.id, actorId);
+    }
+
+    return {
+      ...savedRecord,
+      _notice: isFallback
+        ? 'Sincronizado con datos rápidos de Mercado Público. El detalle de ofertas se enriquecerá en segundo plano.'
+        : undefined,
+    };
   }
 
   /**
@@ -484,7 +691,7 @@ export class CompraAgilService {
       if (error) {
         this.logger.error(`Error saving audit log: ${error.message}`);
       }
-    } catch (e) {
+    } catch (e: any) {
       this.logger.error(`Failed to log hito: ${e.message}`);
     }
   }
@@ -560,7 +767,7 @@ export class CompraAgilService {
         count: allResultados.length,
         resultados: allResultados,
       };
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(`Error searching buscador external: ${error.message}`);
       throw new HttpException(
         error.response?.data?.message ||

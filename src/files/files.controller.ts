@@ -1,7 +1,8 @@
-import {
+﻿import {
   Controller,
   Post,
   Get,
+  Delete,
   Param,
   UseInterceptors,
   UploadedFile,
@@ -466,6 +467,70 @@ export class FilesController {
         uploadedAt: new Date().toISOString(),
       },
     };
+  }
+
+  // ─── GESTIÓN DE ALMACENAMIENTO ───────────────────────────────────────────────
+
+  /**
+   * GET /files/list?prefix=oficios/
+   * Lista todos los archivos en MinIO, opcionalmente filtrados por prefijo.
+   * IMPORTANTE: Debe declararse ANTES de las rutas comodín :filename para evitar colisiones.
+   */
+  @Get('list')
+  @UseGuards(SupabaseAuthGuard)
+  async listFiles(@Query('prefix') prefix?: string) {
+    const files = await this.filesService.listFiles(prefix);
+    return {
+      success: true,
+      data: files,
+    };
+  }
+
+  /**
+   * DELETE /files/:folder/:filename
+   * Elimina un archivo físico de MinIO dentro de una subcarpeta (ej. 'oficios/uuid.pdf')
+   */
+  @Delete(':folder/:filename')
+  @UseGuards(SupabaseAuthGuard)
+  async deleteFileByFolder(
+    @Param('folder') folder: string,
+    @Param('filename') filename: string,
+    @Res() res: Response,
+  ) {
+    return this.handleDeleteFile(`${folder}/${filename}`, res);
+  }
+
+  /**
+   * DELETE /files/:filename
+   * Elimina un archivo físico de MinIO (soporta clave directa o URL-encoded).
+   */
+  @Delete(':filename')
+  @UseGuards(SupabaseAuthGuard)
+  async deleteFile(@Param('filename') filename: string, @Res() res: Response) {
+    const decoded = decodeURIComponent(filename);
+    return this.handleDeleteFile(decoded, res);
+  }
+
+  private async handleDeleteFile(filePath: string, res: Response) {
+    try {
+      await this.filesService.deleteFile(filePath);
+      res.status(HttpStatus.OK).json({
+        success: true,
+        message: `Archivo "${filePath}" eliminado correctamente`,
+      });
+    } catch (error: any) {
+      if (error?.status === HttpStatus.NOT_FOUND || error?.name === 'NotFoundException') {
+        res.status(HttpStatus.NOT_FOUND).json({
+          success: false,
+          message: error.message || 'Archivo no encontrado',
+        });
+      } else {
+        res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
+          success: false,
+          message: 'Error al eliminar el archivo',
+        });
+      }
+    }
   }
 
   @Get('boletas/:filename')

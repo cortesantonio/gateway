@@ -1,4 +1,4 @@
-import {
+﻿import {
   Injectable,
   BadRequestException,
   NotFoundException,
@@ -494,6 +494,49 @@ export class FilesService implements OnModuleInit {
       throw new NotFoundException(
         `Error al obtener el archivo: ${error?.message || 'Error desconocido'}`,
       );
+    }
+  }
+
+  /**
+   * Lista objetos del bucket MinIO, opcionalmente filtrados por prefijo.
+   * @param prefix  Prefijo/carpeta opcional, ej. 'oficios/', 'tickets/'
+   */
+  async listFiles(
+    prefix?: string,
+  ): Promise<{ filename: string; size: number; lastModified: string; mimetype: string }[]> {
+    return new Promise((resolve, reject) => {
+      const results: { filename: string; size: number; lastModified: string; mimetype: string }[] = [];
+      const stream = this.minioClient.listObjects(
+        this.bucketName,
+        prefix || '',
+        true,
+      );
+      stream.on('data', (obj) => {
+        results.push({
+          filename: obj.name ?? '',
+          size: obj.size ?? 0,
+          lastModified: obj.lastModified ? new Date(obj.lastModified).toISOString() : '',
+          mimetype: this.getMimeType(obj.name ?? ''),
+        });
+      });
+      stream.on('end', () => resolve(results));
+      stream.on('error', (err) => reject(err));
+    });
+  }
+
+  /**
+   * Elimina un objeto del bucket MinIO.
+   * @param filename  Clave del objeto a eliminar (ej. 'oficios/uuid.pdf')
+   */
+  async deleteFile(filename: string): Promise<void> {
+    const sanitized = this.sanitizeFilename(filename);
+    try {
+      await this.minioClient.removeObject(this.bucketName, sanitized);
+    } catch (error: any) {
+      if (error?.code === 'NoSuchKey' || error?.message?.includes('does not exist')) {
+        throw new NotFoundException(`Archivo no encontrado: ${sanitized}`);
+      }
+      throw new BadRequestException(`Error al eliminar el archivo: ${error?.message}`);
     }
   }
 
