@@ -53,7 +53,7 @@ export class CompraAgilService {
       const headers = { ticket: this.ticket };
 
       const response = await firstValueFrom(
-        this.httpService.get(url, { headers, params, timeout: 20000 }),
+        this.httpService.get(url, { headers, params, timeout: 60000 }),
       );
 
       const body = response.data;
@@ -83,7 +83,7 @@ export class CompraAgilService {
         error.message?.includes('timeout')
       ) {
         this.logger.warn(
-          `ChileCompra V2 API Timeout (${endpoint}). El servidor de Mercado Público tardó más de 20s.`,
+          `ChileCompra V2 API Timeout (${endpoint}). El servidor de Mercado Público tardó más de 60s.`,
         );
         throw new HttpException(
           'Timeout al conectar con la API de ChileCompra V2',
