@@ -72,20 +72,38 @@ export class UsersService {
       page++;
     }
 
-    // Mapeamos directamente los usuarios devueltos por listUsers para obtener su last_sign_in_at y factores de seguridad sin consultas N+1
-    return allUsers.map((user) => {
-      const factors = (
-        user as unknown as { factors?: Array<{ status: string }> }
-      ).factors;
-      const mfa_enabled = Array.isArray(factors)
-        ? factors.some((f) => f.status === 'verified')
-        : false;
-      return {
-        id: user.id,
-        last_sign_in_at: user.last_sign_in_at ?? null,
-        mfa_enabled,
-      };
-    });
+    // Consultamos los factores MFA de los usuarios en lotes paralelos para evitar cuello de botella
+    const BATCH_SIZE = 15;
+    const mfaStatusMap = new Map<string, boolean>();
+
+    for (let i = 0; i < allUsers.length; i += BATCH_SIZE) {
+      const batch = allUsers.slice(i, i + BATCH_SIZE);
+      await Promise.all(
+        batch.map(async (u) => {
+          try {
+            const { data } = await adminClient.auth.admin.mfa.listFactors({
+              userId: u.id,
+            });
+            const hasVerified = (data?.factors || []).some(
+              (f) => f.status === 'verified',
+            );
+            mfaStatusMap.set(u.id, hasVerified);
+          } catch (err) {
+            console.error(
+              `Error al verificar factores MFA para el usuario ${u.id}:`,
+              err,
+            );
+            mfaStatusMap.set(u.id, false);
+          }
+        }),
+      );
+    }
+
+    return allUsers.map((user) => ({
+      id: user.id,
+      last_sign_in_at: user.last_sign_in_at ?? null,
+      mfa_enabled: mfaStatusMap.get(user.id) ?? false,
+    }));
   }
 
   async disableUserMfa(userId: string) {
