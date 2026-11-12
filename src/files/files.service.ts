@@ -503,9 +503,16 @@ export class FilesService implements OnModuleInit {
    */
   async listFiles(
     prefix?: string,
-  ): Promise<{ filename: string; size: number; lastModified: string; mimetype: string }[]> {
+  ): Promise<
+    { filename: string; size: number; lastModified: string; mimetype: string }[]
+  > {
     return new Promise((resolve, reject) => {
-      const results: { filename: string; size: number; lastModified: string; mimetype: string }[] = [];
+      const results: {
+        filename: string;
+        size: number;
+        lastModified: string;
+        mimetype: string;
+      }[] = [];
       const stream = this.minioClient.listObjects(
         this.bucketName,
         prefix || '',
@@ -515,7 +522,9 @@ export class FilesService implements OnModuleInit {
         results.push({
           filename: obj.name ?? '',
           size: obj.size ?? 0,
-          lastModified: obj.lastModified ? new Date(obj.lastModified).toISOString() : '',
+          lastModified: obj.lastModified
+            ? new Date(obj.lastModified).toISOString()
+            : '',
           mimetype: this.getMimeType(obj.name ?? ''),
         });
       });
@@ -533,10 +542,15 @@ export class FilesService implements OnModuleInit {
     try {
       await this.minioClient.removeObject(this.bucketName, sanitized);
     } catch (error: any) {
-      if (error?.code === 'NoSuchKey' || error?.message?.includes('does not exist')) {
+      if (
+        error?.code === 'NoSuchKey' ||
+        error?.message?.includes('does not exist')
+      ) {
         throw new NotFoundException(`Archivo no encontrado: ${sanitized}`);
       }
-      throw new BadRequestException(`Error al eliminar el archivo: ${error?.message}`);
+      throw new BadRequestException(
+        `Error al eliminar el archivo: ${error?.message}`,
+      );
     }
   }
 

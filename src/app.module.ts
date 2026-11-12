@@ -14,6 +14,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { MonitoringModule } from './monitoring/monitoring.module';
 import { MassMailModule } from './mass-mail/mass-mail.module';
 import { DeviceTasksModule } from './device-tasks/device-tasks.module';
+import { WhatsAppModule } from './whatsapp/whatsapp.module';
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { DeviceTasksModule } from './device-tasks/device-tasks.module';
     MercadoPublicoModule,
     MercadoPublicoScraperModule,
     MonitoringModule,
+    WhatsAppModule,
     ScheduleModule.forRoot(),
     ThrottlerModule.forRoot([
       {

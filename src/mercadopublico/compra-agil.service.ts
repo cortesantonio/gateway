@@ -144,11 +144,7 @@ export class CompraAgilService {
     if (str.includes('desiert') || idEstado === 3) {
       return 'desierta';
     }
-    if (
-      str.includes('cancelad') ||
-      str.includes('revocad') ||
-      idEstado === 5
-    ) {
+    if (str.includes('cancelad') || str.includes('revocad') || idEstado === 5) {
       return 'cancelada';
     }
     return 'publicada';
@@ -303,8 +299,7 @@ export class CompraAgilService {
         const found =
           list.find(
             (r: any) =>
-              r.codigo?.toString().toUpperCase() ===
-              cleanCodigo.toUpperCase(),
+              r.codigo?.toString().toUpperCase() === cleanCodigo.toUpperCase(),
           ) || (list.length === 1 ? list[0] : null);
 
         if (found) {

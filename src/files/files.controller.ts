@@ -519,7 +519,10 @@ export class FilesController {
         message: `Archivo "${filePath}" eliminado correctamente`,
       });
     } catch (error: any) {
-      if (error?.status === HttpStatus.NOT_FOUND || error?.name === 'NotFoundException') {
+      if (
+        error?.status === HttpStatus.NOT_FOUND ||
+        error?.name === 'NotFoundException'
+      ) {
         res.status(HttpStatus.NOT_FOUND).json({
           success: false,
           message: error.message || 'Archivo no encontrado',

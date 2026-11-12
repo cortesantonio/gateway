@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-call */
-/* eslint-disable @typescript-eslint/no-unsafe-return */
+
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
 import { Injectable, Logger, Inject } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
@@ -274,17 +274,11 @@ export class MercadoPublicoSyncService {
             estadoLocal = 'cerrada';
           else if (detail.CodigoEstado === 7 || detail.estado === 'Desierta')
             estadoLocal = 'desierta';
-          else if (
-            detail.CodigoEstado === 8 ||
-            detail.estado === 'Adjudicada'
-          )
+          else if (detail.CodigoEstado === 8 || detail.estado === 'Adjudicada')
             estadoLocal = 'adjudicada';
           else if (detail.CodigoEstado === 18 || detail.estado === 'Revocada')
             estadoLocal = 'revocada';
-          else if (
-            detail.CodigoEstado === 19 ||
-            detail.estado === 'Suspendida'
-          )
+          else if (detail.CodigoEstado === 19 || detail.estado === 'Suspendida')
             estadoLocal = 'suspendida';
           else if (detail.CodigoEstado === 5 || detail.estado === 'Publicada')
             estadoLocal = 'abierta';
@@ -307,9 +301,7 @@ export class MercadoPublicoSyncService {
               detail.Descripcion || detail.descripcion || lic.observaciones,
             estado: estadoLocal,
             monto_estimado:
-              detail.MontoEstimado ||
-              detail.monto?.valor ||
-              lic.monto_estimado,
+              detail.MontoEstimado || detail.monto?.valor || lic.monto_estimado,
             moneda: detail.Moneda || lic.moneda,
             codigo_estado_mp: detail.CodigoEstado || lic.codigo_estado_mp,
             dias_cierre_licitacion:
@@ -407,7 +399,9 @@ export class MercadoPublicoSyncService {
         }
 
         // Omitir si la fecha de cierre ya transcurrió en el pasado
-        if (this.hasAllImportedDatesPassed([ca.fecha_cierre, ca.mp_fecha_cierre])) {
+        if (
+          this.hasAllImportedDatesPassed([ca.fecha_cierre, ca.mp_fecha_cierre])
+        ) {
           this.logger.debug(
             `[SyncEngine] Omitiendo Compra Ágil ${ca.codigo_compra_agil}: su fecha de cierre ya transcurrió.`,
           );
@@ -486,7 +480,12 @@ export class MercadoPublicoSyncService {
         }
 
         // Omitir si las fechas del contrato o cierre ya pasaron
-        if (this.hasAllImportedDatesPassed([td.fecha_cierre, td.fecha_termino_contrato])) {
+        if (
+          this.hasAllImportedDatesPassed([
+            td.fecha_cierre,
+            td.fecha_termino_contrato,
+          ])
+        ) {
           this.logger.debug(
             `[SyncEngine] Omitiendo Trato Directo ${idFicha}: sus fechas del contrato ya transcurrieron.`,
           );
@@ -559,8 +558,13 @@ export class MercadoPublicoSyncService {
         }
 
         // Omitir si la OC ya concluyó en estado Aceptada/Cancelada/Rechazada o su fecha de aceptación ya pasó
-        const ocFinalized = ['aceptada', 'cancelada', 'rechazada'].includes((oc.estado_mp || '').toLowerCase());
-        if (ocFinalized || this.hasAllImportedDatesPassed([oc.fecha_aceptacion])) {
+        const ocFinalized = ['aceptada', 'cancelada', 'rechazada'].includes(
+          (oc.estado_mp || '').toLowerCase(),
+        );
+        if (
+          ocFinalized ||
+          this.hasAllImportedDatesPassed([oc.fecha_aceptacion])
+        ) {
           this.logger.debug(
             `[SyncEngine] Omitiendo Orden de Compra ${oc.codigo_oc}: fecha de aceptación ya ocurrió o estado finalizado (${oc.estado_mp}).`,
           );
@@ -613,8 +617,9 @@ export class MercadoPublicoSyncService {
         }
       }
     } catch (e: any) {
-      this.logger.error
-        (`[SyncEngine] Fallo en syncOrdenesCompra: ${e.message}`);
+      this.logger.error(
+        `[SyncEngine] Fallo en syncOrdenesCompra: ${e.message}`,
+      );
     }
 
     return { processed, updated, errors };
