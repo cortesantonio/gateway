@@ -8,6 +8,14 @@ import { json, urlencoded } from 'express'; // <--- Importante
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
+  // Límite reducido (64kb) para el webhook de WhatsApp — un payload de Evoluziona
+  // nunca debería superar unos pocos KB; el límite global de 50mb queda para
+  // los demás endpoints (subida de archivos, mass-mail, etc.).
+  app.use('/whatsapp/webhook', json({ limit: '64kb' }));
+  app.use('/whatsapp/webhook', urlencoded({ extended: false, limit: '64kb' }));
+
+  // Body parser global para el resto de rutas
   app.use(json({ limit: '50mb' }));
   app.use(urlencoded({ extended: true, limit: '50mb' }));
 
