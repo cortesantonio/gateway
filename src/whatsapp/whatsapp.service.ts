@@ -274,7 +274,7 @@ export class WhatsAppService implements OnModuleDestroy {
     );
 
     const notificationId = this.extractNotificationId(dto.request_id);
-    if (!notificationId) {
+    if (notificationId === null) {
       this.logger.debug(
         `[WhatsApp Status] request_id "${dto.request_id}" no corresponde a un ID de notificacion_cita.`,
       );
@@ -475,7 +475,7 @@ export class WhatsAppService implements OnModuleDestroy {
 
     // Plan A: request_id explícito (ej. cuando el paciente responde citando el mensaje)
     const explicitId = this.extractNotificationId(dto.request_id);
-    if (explicitId) {
+    if (explicitId !== null) {
       const { data: byId, error } = await client
         .from('notificacion_cita')
         .select(selectFields)
@@ -567,8 +567,11 @@ export class WhatsAppService implements OnModuleDestroy {
     }
 
     // 3. Confirmación
+    // Lookahead negativo: "1 <texto>" solo confirma si el resto no empieza con negación o cancelación.
     if (
-      /^1(?:\s|$|[.!?,)]|ok|si|sí)/.test(clean) ||
+      /^1(?:$|[.!?,)]|(?:ok|si|sí)(?:\s|$|[.!?,)])|(\s+)(?!no\b|cancel|rechaz|anula|imposib))/.test(
+        clean,
+      ) ||
       /^(?:si|sí|ok|dale|voy|confirmo|confirmado|confirma)(?:\s|$|[.!?,)])/.test(
         clean,
       ) ||
