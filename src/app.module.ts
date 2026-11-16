@@ -15,6 +15,7 @@ import { MonitoringModule } from './monitoring/monitoring.module';
 import { MassMailModule } from './mass-mail/mass-mail.module';
 import { DeviceTasksModule } from './device-tasks/device-tasks.module';
 import { WhatsAppModule } from './whatsapp/whatsapp.module';
+import { ZoomModule } from './zoom/zoom.module';
 
 @Module({
   imports: [
@@ -40,6 +41,7 @@ import { WhatsAppModule } from './whatsapp/whatsapp.module';
     MercadoPublicoScraperModule,
     MonitoringModule,
     WhatsAppModule,
+    ZoomModule,
     ScheduleModule.forRoot(),
     ThrottlerModule.forRoot([
       {
