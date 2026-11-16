@@ -25,38 +25,56 @@ export class ZoomService {
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
     private readonly supabaseService: SupabaseService,
-  ) {}
+  ) { }
 
   /**
    * Valida si el usuario solicitante tiene rol de Administrador o Gestor de Solicitudes Zoom
    */
   async validateUserRole(userId: string): Promise<boolean> {
     try {
-      const client = this.supabaseService.getClient();
+      const client = this.supabaseService.getAdminClient();
       const { data, error } = await client
         .from('user_role')
         .select('role:role_id(nombre)')
         .eq('user_id', userId);
 
-      if (error || !data) {
-        this.logger.warn(`Error al verificar roles para usuario ${userId}: ${error?.message}`);
+        if (error) {
+          this.logger.warn(`Error al verificar roles para usuario ${userId}: ${error.message}`);
+        }
+
+        const allowedRoles = new Set([
+          'Administrador del Sistema',
+          'Gestionar Solicitudes Zoom',
+          'Gestionar Salas',
+        ]);
+
+        const userRoles = (data || []).map((entry: any) => entry.role?.nombre).filter(Boolean);
+        this.logger.log(`Roles encontrados para usuario ${userId}: ${JSON.stringify(userRoles)}`);
+
+        const hasAllowedRole = userRoles.some((roleName: string) => allowedRoles.has(roleName));
+        if (hasAllowedRole) return true;
+
+        // Verificar también en tabla 'user' si tiene campo role o is_admin
+        const { data: userProfile } = await client
+          .from('user')
+          .select('is_admin, role')
+          .eq('id', userId)
+          .maybeSingle();
+
+        if (
+          userProfile?.is_admin === true ||
+          userProfile?.role === 'admin' ||
+          userProfile?.role === 'Administrador del Sistema'
+        ) {
+          return true;
+        }
+
+        return false;
+      } catch (err: any) {
+        this.logger.error(`Excepción al validar permisos de usuario: ${err.message}`);
         return false;
       }
-
-      const allowedRoles = new Set([
-        'Administrador del Sistema',
-        'Gestionar Solicitudes Zoom',
-      ]);
-
-      return data.some((entry: any) => {
-        const roleObj = entry.role as { nombre?: string } | null | undefined;
-        return roleObj?.nombre ? allowedRoles.has(roleObj.nombre) : false;
-      });
-    } catch (err: any) {
-      this.logger.error(`Excepción al validar permisos de usuario: ${err.message}`);
-      return false;
     }
-  }
 
   /**
    * Obtiene credenciales de Zoom desde variables de entorno
