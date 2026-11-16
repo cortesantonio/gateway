@@ -173,6 +173,20 @@ describe('WhatsAppModule Audit & Edge Cases', () => {
       expect(internals.parseConfirmationIntent('Sí, ahí estaré 👍')).toBe(
         'confirmado',
       );
+      expect(internals.parseConfirmationIntent('1ok')).toBe('confirmado');
+      expect(internals.parseConfirmationIntent('1 si')).toBe('confirmado');
+      expect(internals.parseConfirmationIntent('1 confirmo')).toBe('confirmado');
+    });
+
+    it('no confunde "1 no" ni "1 no puedo" con una confirmación (fix bug regex)', () => {
+      // "1 no" seguido de negación no debe ser confirmado
+      expect(internals.parseConfirmationIntent('1 no')).toBeNull();
+      // "1 no puedo" -> el rechazo detecta "no puedo" antes
+      expect(internals.parseConfirmationIntent('1 no puedo')).toBe('rechazado');
+      // Números seguidos (11, 10, 21) no deben causar ninguna intención
+      expect(internals.parseConfirmationIntent('11')).toBeNull();
+      expect(internals.parseConfirmationIntent('10')).toBeNull();
+      expect(internals.parseConfirmationIntent('21')).toBeNull();
     });
   });
 
