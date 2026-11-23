@@ -11,7 +11,10 @@ import {
 } from '@nestjs/common';
 import { SupabaseAuthGuard } from '../auth/supabase-auth.guard';
 import { ZoomService } from './zoom.service';
-import { CreateZoomMeetingDto, ZoomMeetingResponse } from './dto/create-zoom-meeting.dto';
+import {
+  CreateZoomMeetingDto,
+  ZoomMeetingResponse,
+} from './dto/create-zoom-meeting.dto';
 
 interface AuthenticatedRequest {
   user?: {
@@ -35,6 +38,14 @@ export class ZoomController {
   }
 
   /**
+   * Obtiene solicitudes pendientes de Zoom para mostrarlas en el calendario
+   */
+  @Get('solicitudes-pendientes')
+  async getPendingSolicitudes() {
+    return await this.zoomService.getPendingSolicitudes();
+  }
+
+  /**
    * Crea una reunión en Zoom Cloud validando token de Supabase y roles de administración
    */
   @Post('meetings')
@@ -45,8 +56,9 @@ export class ZoomController {
     @Req() req: AuthenticatedRequest,
   ): Promise<ZoomMeetingResponse> {
     const userId = req.user?.id || '';
-    this.logger.log(`Solicitud de creación de reunión Zoom recibida del usuario: ${userId}`);
+    this.logger.log(
+      `Solicitud de creación de reunión Zoom recibida del usuario: ${userId}`,
+    );
     return await this.zoomService.createMeeting(userId, dto);
   }
 }
-

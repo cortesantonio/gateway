@@ -175,7 +175,9 @@ describe('WhatsAppModule Audit & Edge Cases', () => {
       );
       expect(internals.parseConfirmationIntent('1ok')).toBe('confirmado');
       expect(internals.parseConfirmationIntent('1 si')).toBe('confirmado');
-      expect(internals.parseConfirmationIntent('1 confirmo')).toBe('confirmado');
+      expect(internals.parseConfirmationIntent('1 confirmo')).toBe(
+        'confirmado',
+      );
     });
 
     it('no confunde "1 no" ni "1 no puedo" con una confirmación (fix bug regex)', () => {
@@ -235,33 +237,36 @@ describe('WhatsAppModule Audit & Edge Cases', () => {
       const updatePayloads: Array<Record<string, unknown>> = [];
       mockSupabaseClient.from.mockImplementation((table: string) => {
         if (table === 'notificacion_cita') {
-          return {
-            select: () => ({
-              eq: () => ({
-                eq: () => ({
-                  ilike: () => ({
-                    order: () => ({
-                      limit: () => ({
-                        returns: () =>
-                          Promise.resolve({
-                            data: [
-                              {
-                                id: 2050,
-                                nombre_paciente: 'Juan Pérez',
-                                telefono_paciente: '+56 9 5700-0761',
-                                estado_confirmacion: 'pendiente',
-                                estado_envio: 'en_cola',
-                                fecha_envio: null,
-                              },
-                            ],
-                            error: null,
-                          }),
-                      }),
-                    }),
-                  }),
-                }),
+          const queryBuilder: any = {
+            select: () => queryBuilder,
+            eq: () => queryBuilder,
+            gte: () => queryBuilder,
+            lte: () => queryBuilder,
+            ilike: () => queryBuilder,
+            order: () => queryBuilder,
+            limit: () => queryBuilder,
+            returns: () =>
+              Promise.resolve({
+                data: [
+                  {
+                    id: 2050,
+                    nombre_paciente: 'Juan Pérez',
+                    telefono_paciente: '+56 9 5700-0761',
+                    estado_confirmacion: 'pendiente',
+                    estado_envio: 'en_cola',
+                    fecha_envio: null,
+                    enviado_whatsapp: true,
+                    fecha_cita: '2026-11-20',
+                    hora_cita: '10:00',
+                  },
+                ],
+                error: null,
               }),
-            }),
+            maybeSingle: () =>
+              Promise.resolve({
+                data: null,
+                error: null,
+              }),
             update: (payload: Record<string, unknown>) => {
               updatePayloads.push(payload);
               return {
@@ -269,6 +274,7 @@ describe('WhatsAppModule Audit & Edge Cases', () => {
               };
             },
           };
+          return queryBuilder;
         }
         return {
           upsert: () => Promise.resolve({ error: null }),

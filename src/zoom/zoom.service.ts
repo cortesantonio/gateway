@@ -9,7 +9,10 @@ import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
 import { SupabaseService } from '../auth/supabase.service';
-import { CreateZoomMeetingDto, ZoomMeetingResponse } from './dto/create-zoom-meeting.dto';
+import {
+  CreateZoomMeetingDto,
+  ZoomMeetingResponse,
+} from './dto/create-zoom-meeting.dto';
 
 interface CachedZoomToken {
   token: string;
@@ -25,7 +28,7 @@ export class ZoomService {
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
     private readonly supabaseService: SupabaseService,
-  ) { }
+  ) {}
 
   /**
    * Valida si el usuario solicitante tiene rol de Administrador o Gestor de Solicitudes Zoom
@@ -38,48 +41,62 @@ export class ZoomService {
         .select('role:role_id(nombre)')
         .eq('user_id', userId);
 
-        if (error) {
-          this.logger.warn(`Error al verificar roles para usuario ${userId}: ${error.message}`);
-        }
-
-        const allowedRoles = new Set([
-          'Administrador del Sistema',
-          'Gestionar Solicitudes Zoom',
-          'Gestionar Salas',
-        ]);
-
-        const userRoles = (data || []).map((entry: any) => entry.role?.nombre).filter(Boolean);
-        this.logger.log(`Roles encontrados para usuario ${userId}: ${JSON.stringify(userRoles)}`);
-
-        const hasAllowedRole = userRoles.some((roleName: string) => allowedRoles.has(roleName));
-        if (hasAllowedRole) return true;
-
-        // Verificar también en tabla 'user' si tiene campo role o is_admin
-        const { data: userProfile } = await client
-          .from('user')
-          .select('is_admin, role')
-          .eq('id', userId)
-          .maybeSingle();
-
-        if (
-          userProfile?.is_admin === true ||
-          userProfile?.role === 'admin' ||
-          userProfile?.role === 'Administrador del Sistema'
-        ) {
-          return true;
-        }
-
-        return false;
-      } catch (err: any) {
-        this.logger.error(`Excepción al validar permisos de usuario: ${err.message}`);
-        return false;
+      if (error) {
+        this.logger.warn(
+          `Error al verificar roles para usuario ${userId}: ${error.message}`,
+        );
       }
+
+      const allowedRoles = new Set([
+        'Administrador del Sistema',
+        'Gestionar Solicitudes Zoom',
+        'Gestionar Salas',
+      ]);
+
+      const userRoles = (data || [])
+        .map((entry: any) => entry.role?.nombre)
+        .filter(Boolean);
+      this.logger.log(
+        `Roles encontrados para usuario ${userId}: ${JSON.stringify(userRoles)}`,
+      );
+
+      const hasAllowedRole = userRoles.some((roleName: string) =>
+        allowedRoles.has(roleName),
+      );
+      if (hasAllowedRole) return true;
+
+      // Verificar también en tabla 'user' si tiene campo role o is_admin
+      const { data: userProfile } = await client
+        .from('user')
+        .select('is_admin, role')
+        .eq('id', userId)
+        .maybeSingle();
+
+      if (
+        userProfile?.is_admin === true ||
+        userProfile?.role === 'admin' ||
+        userProfile?.role === 'Administrador del Sistema'
+      ) {
+        return true;
+      }
+
+      return false;
+    } catch (err: any) {
+      this.logger.error(
+        `Excepción al validar permisos de usuario: ${err.message}`,
+      );
+      return false;
     }
+  }
 
   /**
    * Obtiene credenciales de Zoom desde variables de entorno
    */
-  private getZoomCredentials(): { accountId: string; clientId: string; clientSecret: string } {
+  private getZoomCredentials(): {
+    accountId: string;
+    clientId: string;
+    clientSecret: string;
+  } {
     const accountId =
       this.configService.get<string>('ZOOM_ACCOUNT_ID') ||
       this.configService.get<string>('VITE_ZOOM_ACCOUNT_ID');
@@ -150,7 +167,9 @@ export class ZoomService {
     } catch (err: any) {
       const errorMsg =
         err.response?.data?.message || err.response?.data?.error || err.message;
-      this.logger.error(`Error al autenticar con la API de Zoom OAuth: ${errorMsg}`);
+      this.logger.error(
+        `Error al autenticar con la API de Zoom OAuth: ${errorMsg}`,
+      );
       throw new InternalServerErrorException(
         `Error al autenticar con la API de Zoom: ${errorMsg}`,
       );
@@ -160,7 +179,10 @@ export class ZoomService {
   /**
    * Crea una reunión en Zoom Cloud
    */
-  async createMeeting(userId: string, dto: CreateZoomMeetingDto): Promise<ZoomMeetingResponse> {
+  async createMeeting(
+    userId: string,
+    dto: CreateZoomMeetingDto,
+  ): Promise<ZoomMeetingResponse> {
     // 1. Verificación de permisos y rol
     const hasPermission = await this.validateUserRole(userId);
     if (!hasPermission) {
@@ -171,32 +193,49 @@ export class ZoomService {
 
     // 2. Validación de inputs
     if (!dto.topic || !dto.topic.trim()) {
-      throw new BadRequestException('El tema (topic) de la reunión es obligatorio.');
+      throw new BadRequestException(
+        'El tema (topic) de la reunión es obligatorio.',
+      );
     }
     if (!dto.startTime) {
-      throw new BadRequestException('La fecha y hora de inicio (startTime) es obligatoria.');
+      throw new BadRequestException(
+        'La fecha y hora de inicio (startTime) es obligatoria.',
+      );
     }
 
     const startTimestamp = new Date(dto.startTime).getTime();
     if (isNaN(startTimestamp)) {
-      throw new BadRequestException('El formato de startTime no es una fecha válida ISO 8601.');
+      throw new BadRequestException(
+        'El formato de startTime no es una fecha válida ISO 8601.',
+      );
     }
 
-    const duration = dto.durationMinutes && dto.durationMinutes > 0 ? dto.durationMinutes : 60;
+    const duration =
+      dto.durationMinutes && dto.durationMinutes > 0 ? dto.durationMinutes : 60;
     if (duration > 480) {
-      throw new BadRequestException('La duración máxima permitida es de 480 minutos (8 horas).');
+      throw new BadRequestException(
+        'La duración máxima permitida es de 480 minutos (8 horas).',
+      );
     }
 
     // 3. Obtener Access Token
     const accessToken = await this.getAccessToken();
 
     // 4. Invocar endpoint de Zoom Meetings
+    // Nota Zoom API: Cuando se especifica 'timezone', Zoom interpreta `start_time` como hora local si no lleva 'Z',
+    // o si es UTC 'Z', Zoom convierte o algunas versiones interpretan la hora en UTC como si fuera local si se pasa mal formateado.
+    // Lo más seguro y canónico según Zoom API Docs es formatear en UTC puro ("yyyy-MM-ddTHH:mm:ssZ") sin timezone en el payload,
+    // O enviar la hora local exacta formateada ("yyyy-MM-ddTHH:mm:ss") con timezone: "America/Santiago".
+    // Usaremos el formato UTC explícito ("...Z") para start_time y omitiremos timezone redundante para que Zoom calcule exactamente el horario UTC universal.
+    const startTimeUtcIso = new Date(dto.startTime)
+      .toISOString()
+      .replace(/\.\d{3}Z$/, 'Z');
+
     const zoomPayload = {
       topic: dto.topic.trim(),
       type: 2, // Scheduled meeting
-      start_time: new Date(dto.startTime).toISOString(),
+      start_time: startTimeUtcIso,
       duration: duration,
-      timezone: 'America/Santiago',
       agenda: dto.agenda?.trim() || '',
       settings: {
         host_video: true,
@@ -214,13 +253,17 @@ export class ZoomService {
 
     try {
       const response = await firstValueFrom(
-        this.httpService.post('https://api.zoom.us/v2/users/me/meetings', zoomPayload, {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            'Content-Type': 'application/json',
+        this.httpService.post(
+          'https://api.zoom.us/v2/users/me/meetings',
+          zoomPayload,
+          {
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              'Content-Type': 'application/json',
+            },
+            timeout: 20000,
           },
-          timeout: 20000,
-        }),
+        ),
       );
 
       const meetingData = response.data;
@@ -247,5 +290,34 @@ export class ZoomService {
       );
     }
   }
-}
 
+  /**
+   * Obtiene las solicitudes de Zoom pendientes para sincronizar con el calendario institucional
+   */
+  async getPendingSolicitudes(): Promise<any[]> {
+    try {
+      const client = this.supabaseService.getAdminClient();
+      const { data, error } = await client
+        .from('solicitudes_zoom')
+        .select(
+          'id, titulo, descripcion, fecha_inicio, fecha_fin, duracion_minutos, solicitante_nombre, solicitante_email, solicitante_telefono, solicitante_unidad, requiere_grabacion, estado, created_at',
+        )
+        .eq('estado', 'pendiente')
+        .order('fecha_inicio', { ascending: true });
+
+      if (error) {
+        this.logger.error(
+          `Error al consultar solicitudes de Zoom pendientes: ${error.message}`,
+        );
+        throw new InternalServerErrorException(error.message);
+      }
+
+      return data || [];
+    } catch (err: any) {
+      this.logger.error(`Error en getPendingSolicitudes: ${err.message}`);
+      throw new InternalServerErrorException(
+        'Error al consultar solicitudes de Zoom pendientes',
+      );
+    }
+  }
+}

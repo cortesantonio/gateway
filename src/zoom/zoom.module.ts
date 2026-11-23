@@ -12,4 +12,3 @@ import { ZoomService } from './zoom.service';
   exports: [ZoomService],
 })
 export class ZoomModule {}
-

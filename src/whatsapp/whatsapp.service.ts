@@ -471,7 +471,7 @@ export class WhatsAppService implements OnModuleDestroy {
   ): Promise<NotificacionCitaRow | null> {
     const client = this.supabaseService.getAdminClient();
     const selectFields =
-      'id, nombre_paciente, telefono_paciente, estado_confirmacion, estado_envio, fecha_envio';
+      'id, nombre_paciente, telefono_paciente, estado_confirmacion, estado_envio, fecha_envio, fecha_cita, hora_cita';
 
     // Plan A: request_id explícito (ej. cuando el paciente responde citando el mensaje)
     const explicitId = this.extractNotificationId(dto.request_id);
@@ -498,14 +498,33 @@ export class WhatsAppService implements OnModuleDestroy {
     const last8 = digitsOnly.slice(-8);
     const last4 = digitsOnly.slice(-4);
 
-    // Consultamos por los últimos 4 dígitos para no fallar si BD tiene espacios o guiones (ej. "+56 9 5700-0761")
+    // Ventana temporal en zona horaria de Chile: hoy hasta +7 días
+    const today = this.getChileTodayDate();
+    const futureDate = new Date();
+    futureDate.setDate(futureDate.getDate() + 7);
+    const maxDate = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Santiago',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(futureDate);
+
+    // Criterios de seguridad para evitar falsos positivos:
+    // 1. Debe haber sido efectivamente enviada por WhatsApp (enviado_whatsapp = true).
+    // 2. Estado de confirmación debe estar pendiente.
+    // 3. fecha_cita debe estar dentro de la ventana de hoy a +7 días.
+    // 4. Ordenamos por fecha_cita asc y hora_cita asc para priorizar la cita más urgente/próxima.
     const { data: candidates, error: pendingError } = await client
       .from('notificacion_cita')
       .select(selectFields)
       .eq('activo', true)
       .eq('estado_confirmacion', 'pendiente')
+      .eq('enviado_whatsapp', true)
+      .gte('fecha_cita', today)
+      .lte('fecha_cita', maxDate)
       .ilike('telefono_paciente', `%${last4}%`)
-      .order('created_at', { ascending: false })
+      .order('fecha_cita', { ascending: true })
+      .order('hora_cita', { ascending: true })
       .limit(25)
       .returns<NotificacionCitaRow[]>();
 
@@ -521,12 +540,22 @@ export class WhatsAppService implements OnModuleDestroy {
     }
 
     // Validación estricta en memoria sobre los últimos 8 dígitos limpios
-    const matched = candidates.find((row) => {
+    const matchingCandidates = candidates.filter((row) => {
       const rowDigits = String(row.telefono_paciente || '').replace(/\D/g, '');
       return rowDigits.length >= 8 && rowDigits.slice(-8) === last8;
     });
 
-    return matched ?? null;
+    if (matchingCandidates.length === 0) {
+      return null;
+    }
+
+    if (matchingCandidates.length > 1) {
+      this.logger.log(
+        `[WhatsApp Received] Múltiples citas pendientes (${matchingCandidates.length}) encontradas para ${dto.from}. Se prioriza la más próxima: ID ${matchingCandidates[0].id} (${matchingCandidates[0].fecha_cita} ${matchingCandidates[0].hora_cita || ''}).`,
+      );
+    }
+
+    return matchingCandidates[0];
   }
 
   /**
@@ -534,49 +563,83 @@ export class WhatsAppService implements OnModuleDestroy {
    * Evalúa reprogramación y rechazo antes que confirmación para evitar falsos positivos.
    */
   private parseConfirmationIntent(rawText: string): ConfirmationIntent | null {
+    // Normalizar texto: minúsculas, sin acentos para comparación tolerante
     const clean = rawText.trim().toLowerCase();
     if (!clean) return null;
 
-    // 1. Reprogramación (antes que rechazo para capturar "no puedo ese día, quiero cambiar la hora")
+    // Normalizado sin tildes
+    const normalized = clean.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+    // 1. Reprogramación / Cambio de hora (antes que rechazo para capturar "no puedo ese día, quiero cambiar la hora")
     if (
       /^3(?:\s|$|[.!?,)])/.test(clean) ||
-      clean.includes('reprogram') ||
-      clean.includes('reagend') ||
-      /cambiar\s+(?:la\s+)?hora/.test(clean) ||
-      clean.includes('otra hora')
+      normalized.includes('reprogram') ||
+      normalized.includes('reagend') ||
+      normalized.includes('cambiar hora') ||
+      normalized.includes('cambio de hora') ||
+      normalized.includes('cambiar el dia') ||
+      normalized.includes('otra hora') ||
+      normalized.includes('otro dia') ||
+      normalized.includes('otra fecha') ||
+      /cambiar\s+(?:la\s+)?hora/.test(normalized)
     ) {
       return 'solicita_reprogramacion';
     }
 
-    // 2. Rechazo / Cancelación (antes que confirmación para capturar "no confirmo")
+    // 2. Rechazo / Cancelación (antes que confirmación para capturar "no confirmo", "no podre ir", etc.)
     if (
       /^2(?:\s|$|[.!?,)])/.test(clean) ||
-      /^(?:no|no puedo|no voy|imposible|rechazo|rechazado|cancelo|cancelar|anular)(?:\s|$|[.!?,)])/.test(
-        clean,
+      /^(?:no|no puedo|no voy|imposible|rechazo|rechazado|cancelo|cancelar|anular|no asisto|no asisto|no voy a poder|no alcanzo|no llego)(?:\s|$|[.!?,)])/.test(
+        normalized,
       ) ||
-      /\bno\s+(?:confirm\w*|asistir\w*|voy|puedo|podr[eé]|ir[eé])\b/.test(
-        clean,
+      /\bno\s+(?:confirm\w*|asistir\w*|voy|puedo|podr[eé]|podre|ire|ir[eé]|alcanzo|llego)\b/.test(
+        normalized,
       ) ||
-      clean.includes('rechaz') ||
-      clean.includes('cancel') ||
-      clean.includes('anul') ||
+      normalized.includes('rechaz') ||
+      normalized.includes('cancel') ||
+      normalized.includes('anul') ||
+      normalized.includes('no puedo') ||
+      normalized.includes('no podre') ||
+      normalized.includes('no podre') ||
+      normalized.includes('no voy a poder') ||
+      normalized.includes('no voy a asistir') ||
+      normalized.includes('no voy a ir') ||
+      normalized.includes('no alcanzo') ||
+      normalized.includes('con licencia') ||
+      normalized.includes('estoy con licencia') ||
+      normalized.includes('estoy enfermo') ||
+      normalized.includes('estoy enferma') ||
+      normalized.includes('estoy hospitalizad') ||
+      normalized.includes('me encuentro enfermo') ||
       rawText.includes('👎') ||
       rawText.includes('❌')
     ) {
       return 'rechazado';
     }
 
-    // 3. Confirmación
+    // 3. Confirmación (incluye chilenismos, variantes ortográficas y afirmaciones coloquiales)
     // Lookahead negativo: "1 <texto>" solo confirma si el resto no empieza con negación o cancelación.
     if (
       /^1(?:$|[.!?,)]|(?:ok|si|sí)(?:\s|$|[.!?,)])|(\s+)(?!no\b|cancel|rechaz|anula|imposib))/.test(
         clean,
       ) ||
-      /^(?:si|sí|ok|dale|voy|confirmo|confirmado|confirma)(?:\s|$|[.!?,)])/.test(
-        clean,
+      /^(?:si|sí|ok|dale|voy|confirmo|confirmado|confirma|asisto|presente|asistire|ire|asiste|comfirmo|confrimo|cinfirmo)(?:\s|$|[.!?,)])/.test(
+        normalized,
       ) ||
-      clean.includes('confirm') ||
-      clean.includes('asistir') ||
+      normalized.includes('confirm') ||
+      normalized.includes('comfirm') || // Error tipográfico común
+      normalized.includes('confrim') || // Error tipográfico común
+      normalized.includes('asistir') ||
+      normalized.includes('asistire') ||
+      normalized.includes('asisto') ||
+      normalized.includes('ahi estare') ||
+      normalized.includes('ahi voy a estar') ||
+      normalized.includes('alla estare') ||
+      normalized.includes('voy a ir') ||
+      normalized.includes('voy a asistir') ||
+      normalized.includes('cuente conmigo') ||
+      normalized.includes('de alla somos') ||
+      normalized.includes('ya po') ||
       rawText.includes('👍') ||
       rawText.includes('✅')
     ) {

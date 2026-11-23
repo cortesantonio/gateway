@@ -16,4 +16,3 @@ export interface ZoomMeetingResponse {
   startTime: string;
   duration: number;
 }
-
