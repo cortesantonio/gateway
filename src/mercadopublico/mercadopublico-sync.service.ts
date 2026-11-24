@@ -100,10 +100,11 @@ export class MercadoPublicoSyncService {
   }
 
   /**
-   * Cron ejecutable 4 veces al día (08:00, 12:00, 16:00, 20:00) para actualizar
+   * Cron ejecutable 4 veces al día (06:00, 13:30, 20:30, 23:30) para actualizar
    * automáticamente todos los registros activos/en curso de Mercado Público.
+   * Se ajusta fuera del pico de ráfagas de WhatsApp de citas (08:00 - 18:00 en punto).
    */
-  @Cron('0 0 8,12,16,20 * * *')
+  @Cron('0 30 6,13,20,23 * * *')
   async handleCronSyncActive() {
     this.logger.log(
       '[SyncEngine] CRON (4x/día): Iniciando sincronización de procesos activos...',

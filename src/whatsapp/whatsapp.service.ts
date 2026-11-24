@@ -11,6 +11,7 @@ import {
   OnModuleDestroy,
   ServiceUnavailableException,
 } from '@nestjs/common';
+import { Cron } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
 import { AxiosError } from 'axios';
@@ -43,6 +44,7 @@ interface NotificacionCitaRow {
   estado_confirmacion?: string | null;
   fecha_confirmacion?: string | null;
   enviado_whatsapp?: boolean | null;
+  link_opened_at?: string | null;
 }
 
 interface GroupQuotaRow {
@@ -285,7 +287,7 @@ export class WhatsAppService implements OnModuleDestroy {
     const { data: current, error: fetchError } = await client
       .from('notificacion_cita')
       .select(
-        'id, estado_envio, fecha_envio, enviado_whatsapp, estado_confirmacion',
+        'id, estado_envio, fecha_envio, enviado_whatsapp, estado_confirmacion, link_opened_at',
       )
       .eq('id', notificationId)
       .maybeSingle<NotificacionCitaRow>();
@@ -307,14 +309,25 @@ export class WhatsAppService implements OnModuleDestroy {
     const eventIso = this.parseIsoOrNow(dto.timestamp);
     const updateData: Record<string, unknown> = {};
 
+    // Si la cita ya tiene link abierto o confirmación registrada en Supabase,
+    // garantizamos que el estado figure como 'enviado' y no se quede en 'en_cola'
+    const hasBeenAccessedOrConfirmed =
+      Boolean(current.link_opened_at) ||
+      (Boolean(current.estado_confirmacion) &&
+        current.estado_confirmacion !== 'pendiente');
+
     if (dto.status === 'queued') {
-      if (!current.estado_envio || current.estado_envio === 'pendiente') {
+      if (
+        !hasBeenAccessedOrConfirmed &&
+        (!current.estado_envio || current.estado_envio === 'pendiente')
+      ) {
         updateData.estado_envio = 'en_cola';
       }
     } else if (
       dto.status === 'sent' ||
       dto.status === 'delivered' ||
-      dto.status === 'read'
+      dto.status === 'read' ||
+      hasBeenAccessedOrConfirmed
     ) {
       updateData.estado_envio = 'enviado';
       updateData.enviado_whatsapp = true;
@@ -323,10 +336,11 @@ export class WhatsAppService implements OnModuleDestroy {
         updateData.fecha_envio = eventIso;
       }
     } else if (dto.status === 'failed') {
-      // No degradar si el paciente ya respondió o si un intento más reciente ya fue enviado
+      // No degradar si el paciente ya abrió link, respondió o si un intento más reciente ya fue enviado
       const alreadyConfirmedByPatient =
-        Boolean(current.estado_confirmacion) &&
-        current.estado_confirmacion !== 'pendiente';
+        hasBeenAccessedOrConfirmed ||
+        (Boolean(current.estado_confirmacion) &&
+          current.estado_confirmacion !== 'pendiente');
 
       const newerSendAlreadySucceeded =
         current.estado_envio === 'enviado' &&
@@ -1421,6 +1435,82 @@ export class WhatsAppService implements OnModuleDestroy {
       `2 para RECHAZAR / CANCELAR\n` +
       `3 para solicitar REPROGRAMACIÓN`
     );
+  }
+
+  /**
+   * Cron ejecutable cada 5 minutos durante horario hábil (08:00 - 19:00 Lunes a Viernes)
+   * para auto-reconciliar envíos que quedaron atascados en 'en_cola' pero cuyo paciente
+   * ya abrió el enlace web oficial o ya confirmó su cita vía web/RPC.
+   */
+  @Cron('*/5 8-19 * * 1-5')
+  async reconcileStuckQueuedAppointments(): Promise<number> {
+    try {
+      const client = this.supabaseService.getAdminClient();
+
+      interface StuckAppointmentRow {
+        id: number;
+        link_opened_at?: string | null;
+        estado_confirmacion?: string | null;
+        fecha_envio?: string | null;
+      }
+
+      // Buscamos citas que tengan link_opened_at no nulo o estado_confirmacion != 'pendiente'
+      // pero que continúen marcadas con estado_envio = 'en_cola'
+      const { data: stuckRows, error } = await client
+        .from('notificacion_cita')
+        .select('id, link_opened_at, estado_confirmacion, fecha_envio')
+        .eq('estado_envio', 'en_cola')
+        .or('link_opened_at.not.is.null,estado_confirmacion.neq.pendiente')
+        .limit(200)
+        .returns<StuckAppointmentRow[]>();
+
+      if (error) {
+        this.logger.error(
+          `[ReconcileCron] Error consultando citas en cola para reconciliar: ${error.message}`,
+        );
+        return 0;
+      }
+
+      if (!stuckRows || stuckRows.length === 0) {
+        return 0;
+      }
+
+      this.logger.log(
+        `[ReconcileCron] Se encontraron ${stuckRows.length} citas en 'en_cola' que ya fueron abiertas o confirmadas por el paciente. Reconciliando...`,
+      );
+
+      let reconciledCount = 0;
+      const nowIso = new Date().toISOString();
+
+      for (const row of stuckRows) {
+        const effectiveFechaEnvio =
+          row.fecha_envio || row.link_opened_at || nowIso;
+        const { error: updErr } = await client
+          .from('notificacion_cita')
+          .update({
+            estado_envio: 'enviado',
+            enviado_whatsapp: true,
+            error_mensaje: null,
+            fecha_envio: effectiveFechaEnvio,
+          })
+          .eq('id', row.id);
+
+        if (!updErr) {
+          reconciledCount++;
+        }
+      }
+
+      this.logger.log(
+        `[ReconcileCron] ✅ Reconciliadas exitosamente ${reconciledCount}/${stuckRows.length} citas a 'enviado'.`,
+      );
+      return reconciledCount;
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.error(
+        `[ReconcileCron] Excepción en reconciliación de citas: ${msg}`,
+      );
+      return 0;
+    }
   }
 
   private parseIsoOrNow(value?: string): string {

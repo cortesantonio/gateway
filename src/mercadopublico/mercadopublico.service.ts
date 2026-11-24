@@ -25,9 +25,10 @@ export class MercadoPublicoService {
   }
 
   /**
-   * Cron job que se ejecuta 4 veces al día (08:00, 12:00, 16:00, 20:00) para refrescar el cache desde el webhook.
+   * Cron job que se ejecuta 4 veces al día (06:00, 13:30, 20:30, 23:30) para refrescar el cache desde el webhook.
+   * Ajustado para no coincidir con horas punta de notificaciones de WhatsApp.
    */
-  @Cron('0 0 8,12,16,20 * * *')
+  @Cron('0 30 6,13,20,23 * * *')
   async handleCron() {
     console.log(
       '[MercadoPublico] CRON (4x/día): Iniciando actualización automática desde webhook...',
