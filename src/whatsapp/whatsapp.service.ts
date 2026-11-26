@@ -287,7 +287,7 @@ export class WhatsAppService implements OnModuleDestroy {
     const { data: current, error: fetchError } = await client
       .from('notificacion_cita')
       .select(
-        'id, estado_envio, fecha_envio, enviado_whatsapp, estado_confirmacion, link_opened_at',
+        'id, group_id, estado_envio, fecha_envio, enviado_whatsapp, estado_confirmacion, link_opened_at',
       )
       .eq('id', notificationId)
       .maybeSingle<NotificacionCitaRow>();
@@ -380,6 +380,17 @@ export class WhatsAppService implements OnModuleDestroy {
       this.logger.log(
         `✅ Cita ID ${notificationId} actualizada por webhook (${dto.status}) -> estado_envio='${nextEstado}'`,
       );
+
+      if (
+        dto.status === 'failed' &&
+        current.estado_envio !== 'fallido' &&
+        current.group_id
+      ) {
+        await this.refundGroupDailyQuota(String(current.group_id), 1);
+        this.logger.log(
+          `♻️ Cuota diaria de WhatsApp restablecida para grupo ${current.group_id} por fallo de entrega en cita ${notificationId}`,
+        );
+      }
     }
 
     return notificationId;
